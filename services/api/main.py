@@ -1015,9 +1015,13 @@ def get_trades(
             # Load ALL orders (no display cutoff) so trade history is complete.
             # Without pre-cutoff trades, position replay can show impossible
             # sequences (e.g. sell 12 after only buying 2).
+            # Cushion covers the merge with deferred flips/snapshots + offset
+            # pagination while still bounding DB egress for long histories.
+            fetch_cap = min(max((offset + limit) * 3, 300), 2000)
             local_rows = (
                 _instance_query(session, BettingOrder, resolved_instance)
                 .order_by(BettingOrder.created_at.desc())
+                .limit(fetch_cap)
                 .all()
             )
             deferred_rows = (

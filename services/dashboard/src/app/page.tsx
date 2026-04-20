@@ -424,7 +424,7 @@ export default function Dashboard() {
 
       // Tier 1: Critical data — renders header, metrics, markets, alerts immediately
       const [t, m, posData, h, b, kp, al] = await Promise.all([
-        instanceApi.getTrades(500),
+        instanceApi.getTrades(100),
         instanceApi.getMarkets(200),
         instanceApi.getPositions(200),
         instanceApi.getHealth(),
