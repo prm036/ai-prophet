@@ -199,7 +199,7 @@ class BettingEngine:
 
             # 3. Check trading constraints:
             # - 2-hour minimum between trades on the same market
-            # - Market must move 10 cents since last FORECAST (prediction)
+            # - Market must move 10 cents since last FILL (trade price)
             skip_due_to_constraints = False
             constraint_reason = None
             MIN_HOURS_BETWEEN_TRADES = 2.0
@@ -209,7 +209,7 @@ class BettingEngine:
                 ticker = market_id[len("kalshi:"):] if market_id.startswith("kalshi:") else market_id
                 try:
                     from .db import get_session
-                    from .db_schema import BettingOrder, BettingPrediction
+                    from .db_schema import BettingOrder
 
                     with get_session(self._engine) as session:
                         # Trade cooldown: check last executed/pending order
@@ -234,40 +234,26 @@ class BettingEngine:
                                     market_id, constraint_reason,
                                 )
 
-                        # Price movement: check against last FORECAST (BettingPrediction has yes_ask/no_ask)
-                        # Exclude the prediction we just saved (prediction_id) to avoid
-                        # comparing current prices against themselves.
-                        if not skip_due_to_constraints:
-                            pred_query = (
-                                session.query(BettingPrediction)
-                                .filter(
-                                    BettingPrediction.instance_name == self.instance_name,
-                                    BettingPrediction.market_id == market_id,
+                        # Price movement: check against last FILL (not last forecast).
+                        # Markets we never traded are always eligible; markets we did
+                        # trade throttle until the price moves 10¢ from fill price.
+                        if not skip_due_to_constraints and last_trade is not None and last_trade.fill_price is not None:
+                            side = str(last_trade.side or "").lower()
+                            fill = float(last_trade.fill_price)
+                            fill_yes = fill if side == "yes" else 1.0 - fill
+                            fill_no = 1.0 - fill_yes
+                            max_deviation = max(abs(yes_ask - fill_yes), abs(no_ask - fill_no))
+
+                            if max_deviation < MIN_PRICE_MOVEMENT:
+                                skip_due_to_constraints = True
+                                constraint_reason = (
+                                    f"Market unchanged: {max_deviation*100:.1f}¢ since last fill (need {MIN_PRICE_MOVEMENT*100:.0f}¢)"
                                 )
-                            )
-                            if prediction_id is not None:
-                                pred_query = pred_query.filter(BettingPrediction.id != prediction_id)
-                            last_pred = (
-                                pred_query
-                                .order_by(BettingPrediction.created_at.desc())
-                                .first()
-                            )
-
-                            if last_pred:
-                                last_yes = float(last_pred.yes_ask)
-                                last_no = float(last_pred.no_ask)
-                                max_deviation = max(abs(yes_ask - last_yes), abs(no_ask - last_no))
-
-                                if max_deviation < MIN_PRICE_MOVEMENT:
-                                    skip_due_to_constraints = True
-                                    constraint_reason = (
-                                        f"Market unchanged: {max_deviation*100:.1f}¢ since last forecast (need {MIN_PRICE_MOVEMENT*100:.0f}¢)"
-                                    )
-                                    logger.info(
-                                        "[BETTING] Skipping %s: %s. "
-                                        "Last forecast: YES %.3f, NO %.3f → Current: YES %.3f, NO %.3f",
-                                        market_id, constraint_reason, last_yes, last_no, yes_ask, no_ask,
-                                    )
+                                logger.info(
+                                    "[BETTING] Skipping %s: %s. "
+                                    "Last fill: YES %.3f, NO %.3f → Current: YES %.3f, NO %.3f",
+                                    market_id, constraint_reason, fill_yes, fill_no, yes_ask, no_ask,
+                                )
                 except Exception as e:
                     logger.warning("[BETTING] Failed to check re-trading constraints for %s: %s", market_id, e)
 
