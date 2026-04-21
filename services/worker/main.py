@@ -1256,7 +1256,7 @@ def fetch_kalshi_markets(adapter, max_markets: int = 10, max_pages: int | None =
                     "no_bid": no_bid,
                     "no_ask": no_ask,
                     "last_price": last_price,
-                    "close_time": close_time_str,
+                    "close_time": mkt.get("close_time"),
                     "open_time": mkt.get("open_time"),
                     "volume_24h": float(mkt.get("volume_24h_fp", 0) or 0),
                 })
