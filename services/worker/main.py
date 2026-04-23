@@ -2261,6 +2261,39 @@ def run_cycle(args) -> None:
     # BettingEngine is NOT thread-safe — process all markets sequentially.
     dry_run = _instance_bool_setting("LIVE_BETTING_DRY_RUN", True)
     order_ledger_state = _load_order_ledger_state(db_engine, adapter, INSTANCE_NAME, dry_run=dry_run)
+
+    # Cap new bets per cycle to the N tickers with the smallest |p_yes - yes_ask|
+    # (forecasts closest to the market). Tickers with open positions are always
+    # processed so the engine can exit/rebalance them regardless of the cap.
+    max_bets_per_cycle = _instance_int_setting("WORKER_MAX_BETS_PER_CYCLE", 10)
+    open_position_tickers: set[str] = set()
+    if order_ledger_state is not None:
+        for tk, pos in order_ledger_state["positions"].items():
+            side, qty, _avg = pos.current_position()
+            if side is not None and qty > 0:
+                open_position_tickers.add(tk)
+
+    edge_ranked: list[tuple[float, str]] = []
+    for mkt in markets_to_analyze:
+        tk = mkt["ticker"]
+        if tk in open_position_tickers:
+            continue
+        preds = [predictions[(tk, ms)] for ms in model_specs if (tk, ms) in predictions]
+        if not preds:
+            continue
+        p_yes = float(preds[0]["p_yes"])
+        edge_ranked.append((abs(p_yes - float(mkt["yes_ask"])), tk))
+    edge_ranked.sort(key=lambda x: x[0])
+    new_entry_allowed: set[str] = {tk for _, tk in edge_ranked[:max_bets_per_cycle]}
+
+    logger.info(
+        "Phase C cap: %d new-entry slots (smallest-edge first); %d tickers have open positions and will always be processed",
+        max_bets_per_cycle, len(open_position_tickers),
+    )
+    if edge_ranked:
+        preview = ", ".join(f"{tk}(|Δ|={e:.3f})" for e, tk in edge_ranked[:max_bets_per_cycle])
+        logger.info("  selected new-entry candidates: %s", preview)
+
     for mkt in markets_to_analyze:
         if _shutdown_requested:
             logger.info("Shutdown requested, stopping betting")
@@ -2423,6 +2456,27 @@ def run_cycle(args) -> None:
                     metadata=run_metadata or None,
                     instance_name=INSTANCE_NAME,
                 )
+
+        # Enforce per-cycle bet cap: only the top-N smallest-edge tickers may
+        # open NEW positions. Tickers with existing holdings still flow through
+        # on_forecast so the engine can exit/rebalance them.
+        if ticker not in open_position_tickers and ticker not in new_entry_allowed:
+            logger.info(
+                "  skipping %s for new entry: outside top-%d smallest-edge cap",
+                ticker, max_bets_per_cycle,
+            )
+            if db_engine is not None:
+                log_cycle_skip_for_models(
+                    db_engine,
+                    model_specs,
+                    market_id,
+                    yes_ask=yes_ask,
+                    no_ask=no_ask,
+                    reason=f"Skipped: outside top-{max_bets_per_cycle} smallest-edge cap for this cycle.",
+                    instance_name=INSTANCE_NAME,
+                )
+            all_market_prices[market_id] = (yes_ask, no_ask)
+            continue
 
         # Feed prediction directly into BettingEngine (strategy decides edge threshold)
         result = betting_engine.on_forecast(
