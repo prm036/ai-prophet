@@ -68,6 +68,12 @@ REMOTE_PREDICT_TIMEOUT_SEC = float(
 )
 EXCLUDED_MARKET_CATEGORIES = {"MENTIONS"}
 
+# Markets are skipped when Kalshi's close_time does not reflect the actual
+# event resolution time. Sports contracts set close_time to an outer
+# settlement deadline (days/weeks out) while the real outcome is known at
+# expected_expiration_time / occurrence_datetime. Gap threshold in seconds.
+MISSPECIFIED_CLOSE_TIME_GAP_SEC = 3600  # 1 hour
+
 
 def _normalized_market_category(category: str | None) -> str:
     return (category or "").strip().upper()
@@ -81,14 +87,47 @@ def _is_excluded_market_category(category: str | None) -> bool:
     return _normalized_market_category(category) in EXCLUDED_MARKET_CATEGORIES
 
 
+def _parse_iso(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (ValueError, AttributeError):
+        return None
+
+
+def _has_misspecified_close_time(mkt: dict | None) -> bool:
+    """Kalshi sets close_time to the outer settlement deadline on sports
+    and similar event markets, while the true resolution moment is in
+    expected_expiration_time / occurrence_datetime. If the gap exceeds
+    one hour, our engine would mark/exit against the wrong timestamp;
+    skip those markets entirely.
+    """
+    if not mkt:
+        return False
+    close_time = _parse_iso(mkt.get("close_time"))
+    if close_time is None:
+        return False
+    for key in ("expected_expiration_time", "occurrence_datetime"):
+        actual = _parse_iso(mkt.get(key))
+        if actual is None:
+            continue
+        if (close_time - actual).total_seconds() > MISSPECIFIED_CLOSE_TIME_GAP_SEC:
+            return True
+    return False
+
+
 def _is_excluded_market(
     *,
     category: str | None = None,
     ticker: str | None = None,
     event_ticker: str | None = None,
     title: str | None = None,
+    market: dict | None = None,
 ) -> bool:
     if _is_excluded_market_category(category):
+        return True
+    if _has_misspecified_close_time(market):
         return True
     return any(
         _contains_excluded_market_marker(value)
@@ -1108,6 +1147,7 @@ def fetch_market_by_ticker(
             ticker=ticker,
             event_ticker=event_ticker,
             title=title,
+            market=mkt,
         ) and not allow_excluded:
             return None
 
@@ -1235,6 +1275,7 @@ def fetch_kalshi_markets(adapter, max_markets: int = 10, max_pages: int | None =
                     ticker=ticker,
                     event_ticker=market_event_ticker,
                     title=market_title,
+                    market=mkt,
                 ):
                     continue
 
@@ -2043,8 +2084,9 @@ def run_cycle(args) -> None:
             ticker=ticker,
             event_ticker=market.get("event_ticker", ""),
             title=title,
+            market=market,
         ):
-            logger.debug("Skipping %s: mentions markets are excluded from tracking and betting", ticker)
+            logger.debug("Skipping %s: excluded market (mentions or close_time mismatch)", ticker)
             log_cycle_skip_for_models(
                 db_engine,
                 model_specs,
