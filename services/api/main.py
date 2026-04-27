@@ -575,6 +575,18 @@ def _is_misspecified_market(adapter: Any, ticker: str) -> bool:
     return misspec
 
 
+def _filter_misspec_tickers(instance_name: str, tickers: set[str]) -> set[str]:
+    """Drop MENTIONS + close-time-mismatch tickers from a ticker set."""
+    if not tickers:
+        return tickers
+    try:
+        adapter = _build_kalshi_adapter(instance_name)
+    except Exception as e:
+        logger.warning("Could not build Kalshi adapter for misspec filter: %s", e)
+        return tickers
+    return {t for t in tickers if not _is_misspecified_market(adapter, t)}
+
+
 def _fetch_market_resolution_outcome(adapter: Any, ticker: str) -> float | None:
     market = _fetch_raw_market(adapter, ticker)
     if not market:
@@ -2159,6 +2171,7 @@ def get_pnl(
         # top-line Net P&L card instead of stale local order replay.
         if not market_id and not model:
             visible_tickers, _ = _display_visible_market_activity(session, resolved_instance)
+            visible_tickers = _filter_misspec_tickers(resolved_instance, visible_tickers)
             display_baseline = _display_baseline_for_instance(session, resolved_instance)
             portfolio_summary = build_portfolio_summary(
                 session,
@@ -2215,6 +2228,7 @@ def get_analytics_summary(instance_name: str | None = Query(None)) -> dict[str, 
     engine = get_db()
     with get_session(engine) as session:
         visible_tickers, visible_market_ids = _display_visible_market_activity(session, resolved_instance)
+        visible_tickers = _filter_misspec_tickers(resolved_instance, visible_tickers)
         display_baseline = _display_baseline_for_instance(session, resolved_instance)
         portfolio_summary = build_portfolio_summary(
             session,
