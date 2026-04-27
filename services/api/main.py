@@ -538,6 +538,43 @@ def _fetch_raw_market(adapter: Any, ticker: str) -> dict[str, Any] | None:
         return None
 
 
+# Cache: ticker -> True (misspecified) / False (clean). Persists across requests
+# in-process; cold cache hits Kalshi once per ticker and stays warm thereafter.
+_MISSPEC_CACHE: dict[str, bool] = {}
+_MISSPEC_GAP_SEC = 3600  # 1 hour
+
+
+def _parse_iso(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (ValueError, AttributeError):
+        return None
+
+
+def _is_misspecified_market(adapter: Any, ticker: str) -> bool:
+    """Return True if Kalshi's close_time is more than _MISSPEC_GAP_SEC after
+    expected_expiration_time / occurrence_datetime — meaning the market keeps
+    trading well past the moment the underlying event is decided."""
+    if not ticker:
+        return False
+    if ticker in _MISSPEC_CACHE:
+        return _MISSPEC_CACHE[ticker]
+    if "MENTION" in ticker.upper():
+        _MISSPEC_CACHE[ticker] = True  # treat MENTIONS as excluded too
+        return True
+    market = _fetch_raw_market(adapter, ticker)
+    if not market:
+        _MISSPEC_CACHE[ticker] = False
+        return False
+    close_t = _parse_iso(market.get("close_time"))
+    actual = _parse_iso(market.get("expected_expiration_time")) or _parse_iso(market.get("occurrence_datetime"))
+    misspec = bool(close_t and actual and (close_t - actual).total_seconds() > _MISSPEC_GAP_SEC)
+    _MISSPEC_CACHE[ticker] = misspec
+    return misspec
+
+
 def _fetch_market_resolution_outcome(adapter: Any, ticker: str) -> float | None:
     market = _fetch_raw_market(adapter, ticker)
     if not market:
@@ -1796,6 +1833,54 @@ _pnl_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 _PNL_CACHE_TTL = 10  # seconds
 
 
+_IDLE_GAP_HOURS = 24
+_IDLE_BUFFER_HOURS = 6
+
+
+def _idle_intervals(
+    realized_events: list[tuple[datetime, float]],
+) -> list[tuple[datetime, datetime]]:
+    """Return list of (start, end) idle intervals between realized events.
+
+    A gap > _IDLE_GAP_HOURS between consecutive realized events is treated
+    as idle. We keep _IDLE_BUFFER_HOURS of context on each side so the chart
+    still shows the run-up to and away from the trading hiatus.
+    """
+    if len(realized_events) < 2:
+        return []
+    gap = timedelta(hours=_IDLE_GAP_HOURS)
+    buffer = timedelta(hours=_IDLE_BUFFER_HOURS)
+    intervals: list[tuple[datetime, datetime]] = []
+    sorted_ts = sorted({ev[0] for ev in realized_events})
+    for i in range(1, len(sorted_ts)):
+        prev, curr = sorted_ts[i - 1], sorted_ts[i]
+        if curr - prev > gap:
+            start = prev + buffer
+            end = curr - buffer
+            if end > start:
+                intervals.append((start, end))
+    return intervals
+
+
+def _compress_idle(
+    ts: datetime,
+    intervals: list[tuple[datetime, datetime]],
+) -> datetime | None:
+    """Map a real timestamp onto a compressed timeline.
+
+    Returns None if ts falls inside an idle interval (snapshot dropped).
+    Otherwise returns ts shifted earlier by the cumulative duration of
+    idle intervals that completed before ts.
+    """
+    offset = timedelta()
+    for start, end in intervals:
+        if start <= ts <= end:
+            return None
+        if ts > end:
+            offset += end - start
+    return ts - offset
+
+
 def _build_snapshot_backed_pnl_series(
     balance_snapshots: list[KalshiBalanceSnapshot],
     realized_events: list[tuple[datetime, float]],
@@ -1807,6 +1892,9 @@ def _build_snapshot_backed_pnl_series(
     order replay. We anchor the series so the final snapshot matches the same
     net-P&L shown in the header cards, while the path between points follows
     recorded Kalshi balance/portfolio snapshots.
+
+    Long idle periods (>24h with no realized events) are compressed out of
+    the visible timeline so the chart focuses on actual trading activity.
     """
     if not balance_snapshots:
         return []
@@ -1816,6 +1904,7 @@ def _build_snapshot_backed_pnl_series(
     baseline_equity = latest_equity - float(target_net_pnl or 0.0)
 
     realized_events = sorted(realized_events, key=lambda item: item[0])
+    intervals = _idle_intervals(realized_events)
     realized_idx = 0
     realized_so_far = 0.0
     series: list[dict[str, Any]] = []
@@ -1825,12 +1914,16 @@ def _build_snapshot_backed_pnl_series(
             realized_so_far = realized_events[realized_idx][1]
             realized_idx += 1
 
+        display_ts = _compress_idle(snap.snapshot_ts, intervals)
+        if display_ts is None:
+            continue
+
         open_value = float(snap.portfolio_value or 0.0)
         pnl = (float(snap.balance or 0.0) + open_value) - baseline_equity
         cash_spent = open_value + realized_so_far - pnl
 
         series.append({
-            "timestamp": snap.snapshot_ts.isoformat(),
+            "timestamp": display_ts.isoformat(),
             "pnl": round(pnl, 4),
             "cash_pnl": round(realized_so_far, 4),
             "open_value": round(open_value, 4),
@@ -2846,12 +2939,37 @@ def get_resolved_markets(
                 "trades": trade_history,
             })
 
+        # Filter MENTIONS + close-time-mismatch markets so the dashboard
+        # numbers reflect only contracts whose close_time aligns with their
+        # actual resolution time (using Kalshi's expected_expiration_time
+        # / occurrence_datetime field as the reference).
+        try:
+            adapter = _build_kalshi_adapter(resolved_instance)
+        except Exception as e:
+            logger.warning("Could not build Kalshi adapter for misspec filter: %s", e)
+            adapter = None
+
+        if adapter is not None:
+            rows = [r for r in rows if not _is_misspecified_market(adapter, r.get("ticker", ""))]
+
         with_pos = [r for r in rows if r["position_side"] is not None]
         total_pnl = round(sum(r["pnl"] for r in with_pos), 4)
-        total_capital = round(sum(r["capital"] for r in with_pos), 4)
         win_count = sum(1 for r in with_pos if r["pnl"] > 0)
         loss_count = sum(1 for r in with_pos if r["pnl"] < 0)
         win_rate = round(win_count / len(with_pos) * 100, 1) if with_pos else 0.0
+
+        # Peak capital deployed = max simultaneous portfolio value ever
+        # observed in balance snapshots. Cost basis summed across closed
+        # positions double-counts rebuys and overstates capital at risk.
+        peak_portfolio_value = (
+            session.query(func.max(KalshiBalanceSnapshot.portfolio_value))
+            .filter(
+                KalshiBalanceSnapshot.instance_name == resolved_instance,
+                KalshiBalanceSnapshot.snapshot_ts >= DISPLAY_CUTOFF_UTC,
+            )
+            .scalar()
+        )
+        total_capital = round(float(peak_portfolio_value or 0.0), 4)
 
         # Compute Brier scores for resolved markets
         brier_score: float | None = None

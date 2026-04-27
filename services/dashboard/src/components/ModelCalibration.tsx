@@ -121,7 +121,7 @@ export function ModelCalibration({
           valueClass={summary.win_rate >= 50 ? "text-profit" : "text-loss"}
         />
         <StatCard
-          label="Capital Deployed"
+          label="Peak Capital Deployed"
           value={fmtDollar(summary.total_capital)}
           sub={`${summary.total_markets} total resolved`}
         />
