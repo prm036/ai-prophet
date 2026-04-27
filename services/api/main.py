@@ -2959,8 +2959,8 @@ def get_resolved_markets(
         win_rate = round(win_count / len(with_pos) * 100, 1) if with_pos else 0.0
 
         # Peak capital deployed = max simultaneous portfolio value ever
-        # observed in balance snapshots. Cost basis summed across closed
-        # positions double-counts rebuys and overstates capital at risk.
+        # observed in balance snapshots, rounded up to the next $100 to
+        # express it as a clean conservative bankroll figure.
         peak_portfolio_value = (
             session.query(func.max(KalshiBalanceSnapshot.portfolio_value))
             .filter(
@@ -2969,7 +2969,8 @@ def get_resolved_markets(
             )
             .scalar()
         )
-        total_capital = round(float(peak_portfolio_value or 0.0), 4)
+        peak_val = float(peak_portfolio_value or 0.0)
+        total_capital = float(math.ceil(peak_val / 100.0) * 100) if peak_val > 0 else 0.0
 
         # Compute Brier scores for resolved markets
         brier_score: float | None = None
