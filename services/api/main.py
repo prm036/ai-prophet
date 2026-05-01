@@ -1842,7 +1842,7 @@ def get_positions(
 
 # Simple in-memory cache for PnL endpoint
 _pnl_cache: dict[str, tuple[float, dict[str, Any]]] = {}
-_PNL_CACHE_TTL = 10  # seconds
+_PNL_CACHE_TTL = 60  # seconds — match dashboard refresh cadence to slash DB egress
 
 
 _IDLE_GAP_HOURS = 24
@@ -2180,15 +2180,26 @@ def get_pnl(
                 starting_total=display_baseline["starting_total"],
                 prefer_synced_portfolio_value=True,
             )
+            # Downsample server-side: 1 row per 5-minute bucket. The chart aggregates
+            # by hour anyway, so pulling all raw rows per instance was pure egress
+            # waste (DB → API). DISTINCT ON keeps the LAST snapshot in each bucket so
+            # the latest-equity anchoring still works.
+            bucket_seconds = 300
             balance_snapshots = (
                 session.query(KalshiBalanceSnapshot)
-                .filter(
-                    KalshiBalanceSnapshot.instance_name == resolved_instance,
-                    KalshiBalanceSnapshot.snapshot_ts >= cutoff_date,
-                )
-                .order_by(KalshiBalanceSnapshot.snapshot_ts.asc(), KalshiBalanceSnapshot.id.asc())
+                .from_statement(text("""
+                    SELECT DISTINCT ON (bucket) *
+                    FROM (
+                        SELECT *, to_timestamp(floor(extract(epoch FROM snapshot_ts) / :bucket) * :bucket) AS bucket
+                        FROM kalshi_balance_snapshots
+                        WHERE instance_name = :inst AND snapshot_ts >= :cutoff
+                    ) sub
+                    ORDER BY bucket ASC, snapshot_ts DESC, id DESC
+                """))
+                .params(inst=resolved_instance, cutoff=cutoff_date, bucket=bucket_seconds)
                 .all()
             )
+            balance_snapshots.sort(key=lambda s: (s.snapshot_ts, s.id))
             snapshot_series = _build_snapshot_backed_pnl_series(
                 balance_snapshots,
                 realized_events,
