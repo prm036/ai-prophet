@@ -32,6 +32,11 @@ from typing import Any
 from sqlalchemy.engine import Engine
 
 from .config import MAX_MARKETS_PER_TICK, MAX_ORDER_COST, KalshiConfig
+
+# Hard cap on simultaneous open markets the agent will hold. Counted off
+# Kalshi's live position view (NOT the local DB) so DB drift never blocks
+# new trades.
+MAX_OPEN_POSITIONS = 30
 from .db import get_session  # Re-exported for tests and legacy patch points.
 from .strategy import BetSignal, BettingStrategy, DefaultBettingStrategy, PortfolioSnapshot, RebalancingStrategy
 
@@ -313,6 +318,54 @@ class BettingEngine:
                     market_id=mid, signal=sig, order_placed=False,
                     error="Dropped: exceeded max_markets_per_tick",
                 ))
+
+        # 5b. Cap NEW-position orders by MAX_OPEN_POSITIONS, counting from
+        # Kalshi's live view so local DB drift never gates trading.
+        held_tickers: set[str] = set()
+        if not self.dry_run:
+            try:
+                kalshi_positions = self._get_adapter().get_positions()
+                for kpos in kalshi_positions or []:
+                    if abs(float(kpos.get("position_fp", 0) or 0)) > 1e-9:
+                        kt = kpos.get("ticker")
+                        if kt:
+                            held_tickers.add(kt)
+            except Exception as e:
+                logger.warning(
+                    "[BETTING] Failed to fetch Kalshi positions for open-position cap: %s",
+                    e,
+                )
+
+        slots_available = max(0, MAX_OPEN_POSITIONS - len(held_tickers))
+        if slots_available < len(pending_orders):
+            kept: list = []
+            dropped_for_cap: list = []
+            for entry in pending_orders:
+                market_id = entry[0]
+                # Map market_id back to ticker (market_id is "kalshi:<ticker>")
+                ticker = market_id.split(":", 1)[1] if ":" in market_id else market_id
+                if ticker in held_tickers:
+                    # Modifying an existing position — never blocked by cap
+                    kept.append(entry)
+                else:
+                    if slots_available > 0:
+                        kept.append(entry)
+                        held_tickers.add(ticker)
+                        slots_available -= 1
+                    else:
+                        dropped_for_cap.append(entry)
+            if dropped_for_cap:
+                logger.warning(
+                    "[BETTING] %d new-position orders dropped to keep total ≤ %d "
+                    "(Kalshi live count)",
+                    len(dropped_for_cap), MAX_OPEN_POSITIONS,
+                )
+                for mid, _, _, _, sig, _ in dropped_for_cap:
+                    results.append(BetResult(
+                        market_id=mid, signal=sig, order_placed=False,
+                        error=f"Dropped: would exceed MAX_OPEN_POSITIONS={MAX_OPEN_POSITIONS}",
+                    ))
+            pending_orders = kept
 
         # 6. Place orders
         for market_id, _p_yes, yes_ask, no_ask, signal, signal_id in pending_orders:
