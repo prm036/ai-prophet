@@ -2307,7 +2307,7 @@ def run_cycle(args) -> None:
     # Cap new bets per cycle to the N tickers with the smallest |p_yes - yes_ask|
     # (forecasts closest to the market). Tickers with open positions are always
     # processed so the engine can exit/rebalance them regardless of the cap.
-    max_bets_per_cycle = _instance_int_setting("WORKER_MAX_BETS_PER_CYCLE", 10)
+    max_bets_per_cycle = _instance_int_setting("WORKER_MAX_BETS_PER_CYCLE", 50)
     open_position_tickers: set[str] = set()
     if order_ledger_state is not None:
         for tk, pos in order_ledger_state["positions"].items():
