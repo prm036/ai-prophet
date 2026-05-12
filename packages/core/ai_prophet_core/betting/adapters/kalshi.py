@@ -267,11 +267,20 @@ class KalshiAdapter(ExchangeAdapter):
             logger.error("KalshiAdapter: failed to fetch balance - %s", e)
             return {"balance": 0, "portfolio_value": 0}
 
-    def get_positions(self) -> list[dict[str, Any]]:
-        """Fetch current positions from Kalshi (always real, even in dry-run)."""
+    def get_positions(self, *, open_only: bool = True) -> list[dict[str, Any]]:
+        """Fetch current positions from Kalshi (always real, even in dry-run).
+
+        With ``open_only=True`` (default), passes Kalshi's ``count_filter=position``
+        so the server only returns markets with non-zero ``position_fp`` — much
+        cheaper than paginating through every market ever traded.
+        """
+        params: dict[str, Any] = {}
+        if open_only:
+            params["count_filter"] = "position"
         return self._get_paginated_items(
             "/trade-api/v2/portfolio/positions",
             items_key="market_positions",
+            params=params or None,
         )
 
     def get_orders(self, *, status: str | None = None, ticker: str | None = None) -> list[dict[str, Any]]:

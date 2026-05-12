@@ -122,6 +122,12 @@ class BettingEngine:
         self._engine = db_engine
         self._kalshi_config = kalshi_config or KalshiConfig.from_env()
         self._adapter = None
+        # Per-cycle cache of Kalshi positions, keyed by ticker → signed float
+        # position_fp (positive YES, negative NO). Refreshed at the start of
+        # process_forecasts(); used by _verify_position_with_kalshi so we make
+        # ONE bulk API call per cycle instead of N (one per market).
+        self._kalshi_position_cache: dict[str, float] = {}
+        self._kalshi_position_cache_filled: bool = False
 
         if self._engine is not None:
             self._init_tables()
@@ -162,6 +168,12 @@ class BettingEngine:
 
         # Use caller's portfolio as fallback when no DB is available
         self.strategy._portfolio = portfolio
+
+        # Pull Kalshi positions ONCE per cycle (live mode). Subsequent
+        # _verify_position_with_kalshi() calls read from this cache, so every
+        # market in this cycle sees the same ground-truth snapshot.
+        if not self.dry_run:
+            self._refresh_kalshi_position_cache()
 
         results: list[BetResult] = []
         # Collect evaluated signals before placing orders (for cap enforcement)
@@ -441,7 +453,7 @@ class BettingEngine:
         )
         return self._adapter
 
-    def _live_ledger_state(self, ticker: str) -> tuple[str | None, int, Decimal]:
+    def _live_ledger_state(self, ticker: str) -> tuple[str | None, float, Decimal]:
         """Query the live order ledger for ground-truth position and cash.
 
         Returns (side, qty, available_cash) by replaying ALL instance orders
@@ -459,7 +471,7 @@ class BettingEngine:
         cancelled before placing new orders.
         """
         if self._engine is None:
-            return None, 0, Decimal(str(self.starting_cash))
+            return None, 0.0, Decimal(str(self.starting_cash))
         try:
             from .db import get_session
             from .db_schema import BettingOrder
@@ -517,11 +529,11 @@ class BettingEngine:
                     else:
                         side, qty, _ = pos.current_position()
                     if side != kalshi_side or abs(qty - kalshi_qty) > 0.001:
-                        db_label = "flat" if side is None or qty <= 0 else f"{side}:{round(qty)}"
+                        db_label = "flat" if side is None or qty <= 0 else f"{side}:{qty:.4g}"
                         kalshi_label = (
                             "flat"
                             if kalshi_side is None or kalshi_qty <= 0
-                            else f"{kalshi_side}:{round(kalshi_qty)}"
+                            else f"{kalshi_side}:{kalshi_qty:.4g}"
                         )
                         logger.error(
                             "[BETTING] CRITICAL: Position mismatch for %s: DB=%s, Kalshi=%s - AUTO-CORRECTING",
@@ -532,29 +544,92 @@ class BettingEngine:
                         # Immediately sync this position to DB
                         self._force_sync_position(ticker, kalshi_side, kalshi_qty)
 
-                    # ALWAYS use Kalshi's position, it's the only truth
-                    return kalshi_side, max(0, round(kalshi_qty)), cash
+                    # Return Kalshi's EXACT position_fp (no rounding). Earlier
+                    # versions rounded to int, so a real residue of e.g. 0.47
+                    # was reported as 0 — the bot then thought it was flat and
+                    # re-opened the position next cycle. That was the drift.
+                    return kalshi_side, kalshi_qty, cash
 
             pos = positions.get(ticker)
             if pos is None:
-                return None, 0, cash
+                return None, 0.0, cash
             side, qty, _ = pos.current_position()
-            return side, max(0, round(qty)), cash
+            return side, max(0.0, float(qty)), cash
         except Exception as e:
             logger.warning("[BETTING] _live_ledger_state query failed for %s: %s", ticker, e)
-            return None, 0, Decimal("0")
+            return None, 0.0, Decimal("0")
+
+    def _refresh_kalshi_position_cache(self) -> bool:
+        """Pull all open positions from Kalshi in one bulk call and cache them.
+
+        Called at the start of every process_forecasts() cycle in LIVE mode.
+        After this runs, _verify_position_with_kalshi() can answer for any
+        ticker from the cache without further API traffic.
+
+        Returns True on success, False if the API call failed (the cache is
+        left empty + flagged unfilled so callers can fall back to ledger replay).
+        """
+        self._kalshi_position_cache = {}
+        self._kalshi_position_cache_filled = False
+        if self.dry_run:
+            return False
+
+        cache: dict[str, float] = {}
+        fractional_residue: list[tuple[str, float]] = []
+        try:
+            positions = self._get_adapter().get_positions(open_only=True)
+            for pos in positions:
+                ticker = pos.get("ticker")
+                if not ticker:
+                    continue
+                try:
+                    raw = pos.get("position_fp", 0)
+                    value = float(raw) if raw is not None else 0.0
+                except (TypeError, ValueError):
+                    continue
+                cache[ticker] = value
+                # Surface fractional residue — Kalshi trades in whole contracts so
+                # any non-integer position is a partial-fill/fee artefact we should
+                # know about (it's the symptom of the drift you noticed).
+                if value != 0.0 and abs(value - round(value)) > 1e-6:
+                    fractional_residue.append((ticker, value))
+        except Exception as e:
+            logger.warning("[BETTING] Failed to refresh Kalshi position cache: %s", e)
+            return False
+
+        self._kalshi_position_cache = cache
+        self._kalshi_position_cache_filled = True
+        if fractional_residue:
+            logger.warning(
+                "[BETTING] Kalshi reports fractional position_fp on %d market(s): %s",
+                len(fractional_residue),
+                ", ".join(f"{t}={v:+.4f}" for t, v in fractional_residue[:10]),
+            )
+        logger.info(
+            "[BETTING] Kalshi position cache refreshed: %d open positions",
+            len(cache),
+        )
+        return True
 
     def _verify_position_with_kalshi(self, ticker: str) -> float | None:
-        """Quick poll to verify exact position from Kalshi before trading.
+        """Return Kalshi's exact ``position_fp`` for ``ticker`` (signed: +YES, -NO).
 
-        Returns signed quantity: positive for YES, negative for NO, or None if error.
+        Reads from the per-cycle cache populated by _refresh_kalshi_position_cache().
+        Falls back to a single-ticker API call if the cache hasn't been filled
+        yet (e.g., during a unit test that calls _live_ledger_state directly).
+
+        Returns 0.0 when the ticker has no open position, or None on API error.
         """
+        if self._kalshi_position_cache_filled:
+            return self._kalshi_position_cache.get(ticker, 0.0)
+        # Cache not filled — fall back to a single-ticker query.
         try:
-            positions = self._get_adapter().get_positions()
+            positions = self._get_adapter().get_positions(open_only=True)
             for pos in positions:
                 if pos.get("ticker") == ticker:
-                    return float(pos.get("position_fp", 0) or 0)
-            return 0.0  # No position found means zero position
+                    raw = pos.get("position_fp", 0)
+                    return float(raw) if raw is not None else 0.0
+            return 0.0
         except Exception as e:
             logger.warning("[BETTING] Failed to verify position with Kalshi for %s: %s", ticker, e)
             return None
@@ -696,7 +771,10 @@ class BettingEngine:
             want_side = signal.side.lower()
 
             if held_side != want_side:
-                held_count = live_qty
+                # Kalshi only fills whole-contract sells. Floor the live float
+                # position so a fractional residue (e.g. position_fp=0.47) never
+                # produces a fractional sell request that the API will reject.
+                held_count = int(live_qty)
                 intended_sell_count = _metadata_count("sell_portion")
                 intended_buy_count = _metadata_count("buy_portion")
                 if intended_sell_count is None:
