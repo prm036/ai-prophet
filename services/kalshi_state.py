@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Iterable
 
-from sqlalchemy import func
+from sqlalchemy import and_, func
 
 from db_models import (
     KalshiBalanceSnapshot,
@@ -346,23 +346,48 @@ def get_latest_balance_snapshot(session, instance_name: str) -> KalshiBalanceSna
 
 
 def get_latest_position_snapshots(session, instance_name: str) -> dict[str, KalshiPositionSnapshot]:
-    latest_snapshot_ts = (
-        session.query(func.max(KalshiPositionSnapshot.snapshot_ts))
+    """Return the most recent snapshot for each ticker independently.
+
+    ``record_kalshi_state`` skips writing a new row when nothing changed for a
+    ticker since its previous snapshot. That means querying for the single
+    "latest snapshot_ts across the instance" returns only the tickers that
+    happened to change in the most recent cycle and drops every other still-
+    open position. Callers (``sync_trading_positions_from_snapshots``,
+    ``build_position_views``, the drift checker) then treat those missing
+    tickers as zeroed-out, which deletes the corresponding ``trading_positions``
+    rows on every sync. The fix is to compute the max snapshot_ts per ticker.
+    """
+    max_ts_subq = (
+        session.query(
+            KalshiPositionSnapshot.ticker.label("ticker"),
+            func.max(KalshiPositionSnapshot.snapshot_ts).label("max_ts"),
+        )
         .filter(KalshiPositionSnapshot.instance_name == instance_name)
-        .scalar()
+        .group_by(KalshiPositionSnapshot.ticker)
+        .subquery()
     )
-    if latest_snapshot_ts is None:
-        return {}
 
     rows = (
         session.query(KalshiPositionSnapshot)
-        .filter(
-            KalshiPositionSnapshot.instance_name == instance_name,
-            KalshiPositionSnapshot.snapshot_ts == latest_snapshot_ts,
+        .join(
+            max_ts_subq,
+            and_(
+                KalshiPositionSnapshot.ticker == max_ts_subq.c.ticker,
+                KalshiPositionSnapshot.snapshot_ts == max_ts_subq.c.max_ts,
+            ),
         )
+        .filter(KalshiPositionSnapshot.instance_name == instance_name)
         .all()
     )
-    return {row.ticker: row for row in rows}
+    # Multiple rows can share the same ticker+snapshot_ts (e.g. duplicate writes
+    # in a single cycle); keep the row with the highest primary key as a
+    # deterministic tie-breaker.
+    latest: dict[str, KalshiPositionSnapshot] = {}
+    for row in rows:
+        existing = latest.get(row.ticker)
+        if existing is None or (row.id or 0) > (existing.id or 0):
+            latest[row.ticker] = row
+    return latest
 
 
 def get_latest_order_snapshots(

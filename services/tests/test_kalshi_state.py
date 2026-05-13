@@ -299,7 +299,7 @@ def test_record_kalshi_state_reconciles_missing_positions_to_zero_snapshots():
     assert snapshots[1].market_exposure == 0.0
 
 
-def test_get_latest_position_snapshots_reads_latest_full_snapshot_batch():
+def test_get_latest_position_snapshots_returns_latest_per_ticker():
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)
 
@@ -378,8 +378,15 @@ def test_get_latest_position_snapshots_reads_latest_full_snapshot_batch():
 
         latest = get_latest_position_snapshots(session, "Haifeng")
 
-    assert set(latest) == {"OLD-YES", "LIVE-YES"}
-    assert latest["OLD-YES"].signed_quantity == 0.0
+    # OLD-NO was snapshotted at 15:30 and never re-snapshotted (record_kalshi_state
+    # skips unchanged positions), so its 15:30 row must still be the "latest"
+    # for that ticker. Earlier behavior returned only rows tagged with the
+    # instance-wide max snapshot_ts and dropped OLD-NO, which then caused
+    # sync_trading_positions_from_snapshots to delete the corresponding
+    # trading_positions row on every cycle.
+    assert set(latest) == {"OLD-YES", "OLD-NO", "LIVE-YES"}
+    assert latest["OLD-YES"].signed_quantity == 0.0  # latest is the reconciled-to-zero row
+    assert latest["OLD-NO"].signed_quantity == -3.0  # only snapshot is the 15:30 row
     assert latest["LIVE-YES"].signed_quantity == 2.0
 
 
