@@ -62,8 +62,20 @@ class _Handler(BaseHTTPRequestHandler):
         pass
 
 
-def open_dashboard(api_url: str, slug: str = "", port: int = 8501, api_key: str | None = None):
-    """Serve the dashboard and open it in the browser."""
+def open_dashboard(
+    api_url: str,
+    slug: str = "",
+    port: int = 8501,
+    api_key: str | None = None,
+    *,
+    block: bool = False,
+):
+    """Serve the dashboard and open it in the browser.
+
+    ``block=True`` is used by the standalone dashboard command so the local
+    HTTP server stays alive until the user stops it. ``block=False`` keeps the
+    dashboard as a sidecar during ``prophet trade eval run --dashboard``.
+    """
     global _API_URL, _API_KEY, _SLUG, _HTML_BYTES
     _API_URL = api_url.rstrip("/")
     _API_KEY = api_key or ""
@@ -79,6 +91,15 @@ def open_dashboard(api_url: str, slug: str = "", port: int = 8501, api_key: str 
     click.echo(f"  Core API:  {_API_URL}")
     if slug:
         click.echo(f"  Experiment: {slug}")
+
+    if block:
+        try:
+            click.echo("  Press Ctrl+C to stop the dashboard")
+            server.serve_forever()
+        except KeyboardInterrupt:
+            click.echo("\nDashboard stopped")
+        finally:
+            server.server_close()
 
 
 # ---------------------------------------------------------------------------

@@ -435,7 +435,7 @@ def dashboard(api_url, slug):
     api_url = api_url or creds.server_url
 
     click.echo("Trade Benchmark Dashboard")
-    open_dashboard(api_url=api_url, slug=slug or "", api_key=creds.server_api_key)
+    open_dashboard(api_url=api_url, slug=slug or "", api_key=creds.server_api_key, block=True)
 
 
 def main():
