@@ -1,4 +1,4 @@
-"""Search client using Brave Search API."""
+"""Provider-pluggable search client for prediction-agent context."""
 
 from __future__ import annotations
 
@@ -9,7 +9,8 @@ import logging
 import random
 import threading
 from collections.abc import Coroutine
-from typing import Any
+from datetime import date, datetime
+from typing import Any, cast
 
 import aiohttp
 import trafilatura
@@ -17,6 +18,9 @@ from trafilatura.meta import reset_caches
 
 from ai_prophet._version import __version__ as PACKAGE_VERSION
 from ai_prophet.trade.core.config import SearchConfig
+
+from .providers import ProviderSearchRequest, SearchProvider, create_provider
+from .sandbox import MissingDatePolicy, filter_sandbox_results, parse_as_of
 
 logger = logging.getLogger(__name__)
 
@@ -32,24 +36,64 @@ DEFAULT_HEADERS = {
 class SearchClient:
     """Client for searching the web and extracting article content.
 
-    Uses Brave Search API for web search and Trafilatura for content extraction.
+    Every provider returns normalized evidence records. ``as_of`` can be passed
+    per search call, or configured as a default on the client.
     """
 
     def __init__(
         self,
         api_key: str,
         config: SearchConfig | None = None,
+        *,
+        provider: str | SearchProvider | None = None,
+        as_of: str | date | datetime | None = None,
+        missing_date_policy: MissingDatePolicy | None = None,
+        provider_options: dict[str, Any] | None = None,
     ) -> None:
         """Initialize search client.
 
         Args:
-            api_key: Brave Search API key
+            api_key: Search API key for the selected provider.
             config: Optional explicit SearchConfig
+            provider: Search provider name ("brave", "exa", "tavily",
+                "perplexity") or a custom provider implementing ``search``.
+            as_of: Optional default cutoff. Date-only values include that day.
+            missing_date_policy: How sandbox mode handles results without any
+                provider date metadata. Defaults to config value.
+            provider_options: Provider-specific request options merged into
+                Exa/Tavily/Perplexity payloads.
         """
         if config is None:
             config = SearchConfig()
 
         self.api_key = api_key
+        raw_provider = provider if provider is not None else config.provider
+        self.provider_name = (
+            getattr(raw_provider, "name", "custom")
+            if not isinstance(raw_provider, str)
+            else raw_provider.strip().lower()
+        )
+        self.default_as_of = parse_as_of(as_of if as_of is not None else config.as_of)
+        policy = missing_date_policy or config.missing_date_policy
+        if policy not in ("reject", "allow"):
+            raise ValueError("missing_date_policy must be 'reject' or 'allow'")
+        self.missing_date_policy = cast(MissingDatePolicy, policy)
+        self.provider_options = provider_options or {}
+        self.last_rejected: list[dict[str, Any]] = []
+        self.last_warnings: list[str] = []
+
+        self._provider: SearchProvider | None
+        if isinstance(raw_provider, str):
+            self._provider = None
+            if self.provider_name != "brave":
+                self._provider = create_provider(
+                    self.provider_name,
+                    api_key=api_key,
+                    options=self.provider_options,
+                )
+        else:
+            self._provider = raw_provider
+
         self.connect_timeout = config.connect_timeout
         self.total_timeout = config.total_timeout
         self.fetch_timeout = config.fetch_timeout
@@ -79,7 +123,13 @@ class SearchClient:
         # Best-effort cleanup on interpreter exit
         atexit.register(self.close)
 
-        logger.info(f"SearchClient initialized (timeout={self.total_timeout}s, concurrent={self.max_concurrent})")
+        logger.info(
+            "SearchClient initialized (provider=%s, default_as_of=%s, timeout=%ss, concurrent=%s)",
+            self.provider_name,
+            self.default_as_of.date().isoformat() if self.default_as_of else None,
+            self.total_timeout,
+            self.max_concurrent,
+        )
 
     def _loop_main(self) -> None:
         """Background thread entrypoint: run a dedicated asyncio loop forever."""
@@ -132,18 +182,13 @@ class SearchClient:
             enable_cleanup_closed=True,
         )
 
-        headers = {
-            **DEFAULT_HEADERS,
-            "X-Subscription-Token": self.api_key,
-        }
-
         timeout = aiohttp.ClientTimeout(
             total=self.total_timeout,
             connect=self.connect_timeout,
         )
 
         self._session = aiohttp.ClientSession(
-            headers=headers,
+            headers=DEFAULT_HEADERS,
             timeout=timeout,
             connector=self._connector,
         )
@@ -203,7 +248,10 @@ class SearchClient:
 
         try:
             session = await self._get_session()
-            async with session.get(BRAVE_API_ENDPOINT, params=params) as response:
+            headers = {"X-Subscription-Token": self.api_key}
+            async with session.get(
+                BRAVE_API_ENDPOINT, params=params, headers=headers
+            ) as response:
                 response.raise_for_status()
                 data = await response.json()
 
@@ -216,7 +264,10 @@ class SearchClient:
                         "url": url,
                         "title": item.get("title", ""),
                         "snippet": item.get("description", ""),
-                        "score": 1.0 - (len(results) * 0.1)  # Simple relevance score
+                        "score": 1.0 - (len(results) * 0.1),  # Simple relevance score
+                        "provider": "brave",
+                        "published_date": item.get("page_age") or item.get("age"),
+                        "updated_date": item.get("last_updated"),
                     })
 
             logger.info(f"Found {len(results)} links for query: '{query}'")
@@ -324,22 +375,93 @@ class SearchClient:
         except asyncio.CancelledError:
             raise
 
-    async def search_async(self, query: str, limit: int = 5) -> list[dict[str, Any]]:
+    async def search_async(
+        self,
+        query: str,
+        limit: int = 5,
+        *,
+        as_of: str | date | datetime | None = None,
+        missing_date_policy: MissingDatePolicy | None = None,
+    ) -> list[dict[str, Any]]:
         """Search for articles and return extracted content.
 
         Args:
             query: Search query
             limit: Maximum number of results
+            as_of: Optional per-call cutoff. Date-only values include that day.
+            missing_date_policy: Optional per-call missing-date behavior.
 
         Returns:
             List of dicts with url, title, snippet, and text
         """
-        logger.info(f"Searching for: '{query}' (limit={limit})")
+        cutoff = parse_as_of(as_of) if as_of is not None else self.default_as_of
+        policy = missing_date_policy or self.missing_date_policy
+        logger.info(
+            "Searching for: %r (limit=%s, provider=%s, as_of=%s)",
+            query,
+            limit,
+            self.provider_name,
+            cutoff.date().isoformat() if cutoff else None,
+        )
+        self.last_rejected = []
+        self.last_warnings = []
 
+        if self._provider is not None:
+            results = await self._search_provider(query, limit, as_of=cutoff)
+        else:
+            results = await self._search_brave(query, limit)
+
+        if not results:
+            logger.warning(f"No URLs found for query: '{query}'")
+            return []
+
+        sandboxed = filter_sandbox_results(
+            results,
+            as_of=cutoff,
+            missing_date_policy=policy,
+        )
+        self.last_rejected = sandboxed.rejected
+        self.last_warnings = sandboxed.warnings
+        if cutoff is not None and sandboxed.rejected:
+            logger.info(
+                "Sandbox rejected %d/%d search results for query %r",
+                len(sandboxed.rejected),
+                len(results),
+                query,
+            )
+
+        logger.info(
+            "Successfully extracted %d/%d articles for query: %r",
+            len(sandboxed.accepted),
+            len(results),
+            query,
+        )
+        return sandboxed.accepted
+
+    async def _search_provider(
+        self,
+        query: str,
+        limit: int,
+        *,
+        as_of: datetime | None,
+    ) -> list[dict[str, Any]]:
+        if self._provider is None:
+            return []
+        session = await self._get_session()
+        return await self._provider.search(
+            session,
+            ProviderSearchRequest(
+                query=query,
+                limit=limit,
+                as_of=as_of,
+                max_extract_chars=self.max_extract_chars,
+            ),
+        )
+
+    async def _search_brave(self, query: str, limit: int) -> list[dict[str, Any]]:
         # Get search results
         results = await self._get_brave_links(query, limit)
         if not results:
-            logger.warning(f"No URLs found for query: '{query}'")
             return []
 
         # Extract URLs
@@ -364,15 +486,30 @@ class SearchClient:
         logger.info(f"Successfully extracted {len(enriched_results)}/{len(urls)} articles for query: '{query}'")
         return enriched_results
 
-    def search(self, query: str, limit: int = 5) -> list[dict[str, Any]]:
+    def search(
+        self,
+        query: str,
+        limit: int = 5,
+        *,
+        as_of: str | date | datetime | None = None,
+        missing_date_policy: MissingDatePolicy | None = None,
+    ) -> list[dict[str, Any]]:
         """Synchronous wrapper for search_async.
 
         Args:
             query: Search query
             limit: Maximum number of results
+            as_of: Optional per-call cutoff. Date-only values include that day.
+            missing_date_policy: Optional per-call missing-date behavior.
 
         Returns:
             List of dicts with url, title, snippet, and text
         """
-        return self._run(self.search_async(query, limit))
-
+        return self._run(
+            self.search_async(
+                query,
+                limit,
+                as_of=as_of,
+                missing_date_policy=missing_date_policy,
+            )
+        )

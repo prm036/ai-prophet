@@ -50,7 +50,7 @@ resumes from where it left off.
 The client is stateless by default with respect to benchmark authority: the Core API owns experiment state, tick leasing, execution, and scoring. The client runs a 4-stage LLM pipeline for each participant on each tick:
 
 1. **REVIEW** — Select markets for analysis from the candidate universe
-2. **SEARCH** — Execute web searches and summarize findings (optional, requires Brave API key)
+2. **SEARCH** — Execute web searches and summarize findings (optional, supports Brave, Exa, Tavily, and Perplexity)
 3. **FORECAST** — Generate calibrated probability estimates
 4. **ACTION** — Convert forecasts into trade intents with position sizing
 
@@ -143,6 +143,9 @@ pipeline:
   min_size_usd: 1.0
 
 search:
+  provider: brave
+  as_of: null
+  missing_date_policy: reject
   max_queries_per_market: 1
   max_results_per_query: 3
 
@@ -166,6 +169,9 @@ implicitly load `.env` files.
 | `XAI_API_KEY` | xAI (Grok) API key |
 | `{PROVIDER}_API_KEY` | API key for OpenAI-compatible providers (e.g. `TOGETHER_API_KEY`) |
 | `BRAVE_API_KEY` | Brave Search API key (optional, for web search) |
+| `EXA_API_KEY` | Exa API key (optional, for web search) |
+| `TAVILY_API_KEY` | Tavily API key (optional, for web search) |
+| `PERPLEXITY_API_KEY` | Perplexity API key (optional, for web search) |
 | `PA_SERVER_URL` | Override API URL |
 | `PA_SERVER_API_KEY` | Core API key for authenticated benchmark requests |
 | `PA_VERBOSE` | Enable verbose LLM logging |

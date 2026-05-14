@@ -16,6 +16,9 @@ logger = logging.getLogger(__name__)
 @dataclass
 class SearchConfig:
     """Search-related configuration."""
+    provider: str = "brave"
+    as_of: str | None = None
+    missing_date_policy: str = "reject"
     max_queries_per_market: int = 1
     max_results_per_query: int = 3
     mock: bool = False
@@ -168,7 +171,9 @@ class ClientConfig:
     def __repr__(self) -> str:
         return (
             f"ClientConfig(\n"
-            f"  search: queries={self.search.max_queries_per_market}, results={self.search.max_results_per_query}\n"
+            f"  search: provider={self.search.provider}, "
+            f"queries={self.search.max_queries_per_market}, "
+            f"results={self.search.max_results_per_query}\n"
             f"  pipeline: markets={self.pipeline.max_markets}, min_size=${self.pipeline.min_size_usd}\n"
             f"  llm: temp={self.llm.temperature}, max_tokens={self.llm.max_tokens}\n"
             f"  server: timeout={self.server.timeout}s, retries={self.server.max_retries}\n"

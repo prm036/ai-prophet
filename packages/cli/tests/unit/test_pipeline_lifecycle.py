@@ -27,6 +27,7 @@ def test_agent_pipeline_close_closes_search_client():
 
 def test_search_client_close_is_idempotent():
     client = SearchClient(api_key="test-key")
+    assert client.provider_name == "brave"
     client.close()
     client.close()
 

@@ -95,7 +95,8 @@ class AgentPipeline:
         search_client: SearchClient | None = self.config.get("search_client")
         self.search_client = search_client
         if search_client:
-            logger.info("Using real search (Brave API)")
+            provider_name = getattr(search_client, "provider_name", "configured provider")
+            logger.info("Using real search (%s)", provider_name)
         else:
             logger.info("Search disabled (no search_client provided)")
 

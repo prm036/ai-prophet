@@ -179,7 +179,7 @@ class SearchStage(PipelineStage):
             logger.info("Search disabled: no search client configured")
             return []
 
-        # Real search mode: Use Brave Search API
+        # Real search mode: use the configured SearchClient provider.
         logger.debug(f"Executing {len(queries_to_run)} search queries")
         all_results = []
         for query in queries_to_run:
@@ -269,4 +269,3 @@ Summarize the key findings relevant to forecasting this market."""
             "key_points": [],
             "open_questions": [reason],
         }
-

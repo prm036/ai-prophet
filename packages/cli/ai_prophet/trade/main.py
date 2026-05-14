@@ -306,10 +306,15 @@ def _make_pipeline_builder(
         )
 
         search_client = None
-        if creds.brave_api_key:
+        search_provider = client_config.search.provider
+        search_api_key = creds.get_search_api_key(search_provider)
+        if search_api_key:
             search_client = SearchClient(
-                api_key=creds.brave_api_key,
+                api_key=search_api_key,
                 config=client_config.search,
+                provider=search_provider,
+                as_of=client_config.search.as_of,
+                missing_date_policy=client_config.search.missing_date_policy,
             )
         api_client = ServerAPIClient(base_url=api_url, api_key=server_api_key)
 
