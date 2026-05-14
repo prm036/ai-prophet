@@ -86,7 +86,7 @@ def test_search_client_keeps_public_class_and_filters_custom_provider_results():
     assert [item["url"] for item in results] == ["https://example.com/old"]
     assert results[0]["sandbox_status"] == "accepted"
     assert [item["url"] for item in client.last_rejected] == ["https://example.com/new"]
-    assert provider.seen_limits == [12]
+    assert provider.seen_limits == [3 * client.sandbox_fetch_multiplier]
 
 
 def test_search_client_uses_live_search_when_no_as_of_is_provided():
