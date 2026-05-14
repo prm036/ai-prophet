@@ -146,6 +146,7 @@ search:
   provider: brave
   as_of: null
   missing_date_policy: reject
+  sandbox_fetch_multiplier: 2
   max_queries_per_market: 1
   max_results_per_query: 3
 

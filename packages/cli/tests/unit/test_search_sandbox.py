@@ -61,6 +61,24 @@ def test_sandbox_filter_can_allow_missing_dates_when_configured():
     assert filtered.warnings
 
 
+def test_sandbox_filter_rejects_future_crawled_date():
+    cutoff = parse_as_of("2026-05-01")
+    filtered = filter_sandbox_results(
+        [
+            {
+                "url": "https://example.com/crawled-late",
+                "title": "Crawled late",
+                "published_date": "2026-04-01",
+                "crawled_date": "2026-05-02",
+            }
+        ],
+        as_of=cutoff,
+    )
+
+    assert len(filtered.accepted) == 0
+    assert filtered.rejected[0]["sandbox_reason"].startswith("crawled_date")
+
+
 def test_provider_cutoff_formatters_include_as_of_date():
     cutoff = parse_as_of("2026-05-01")
 

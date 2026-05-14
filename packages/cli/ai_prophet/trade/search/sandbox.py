@@ -94,15 +94,19 @@ def filter_sandbox_results(
         item = dict(result)
         published_at = parse_result_datetime(item.get("published_date"))
         updated_at = parse_result_datetime(item.get("updated_date"))
+        crawled_at = parse_result_datetime(item.get("crawled_date"))
 
         if published_at is not None:
             item["published_date"] = _format_date(published_at)
         if updated_at is not None:
             item["updated_date"] = _format_date(updated_at)
+        if crawled_at is not None:
+            item["crawled_date"] = _format_date(crawled_at)
 
         reason = _sandbox_rejection_reason(
             published_at=published_at,
             updated_at=updated_at,
+            crawled_at=crawled_at,
             cutoff=cutoff,
             missing_date_policy=missing_date_policy,
         )
@@ -112,7 +116,7 @@ def filter_sandbox_results(
             rejected.append(item)
             continue
 
-        if published_at is None and updated_at is None:
+        if published_at is None and updated_at is None and crawled_at is None:
             warnings.append(
                 f"Accepted result without provider date metadata: {item.get('url', '')}"
             )
@@ -150,15 +154,23 @@ def _sandbox_rejection_reason(
     *,
     published_at: datetime | None,
     updated_at: datetime | None,
+    crawled_at: datetime | None,
     cutoff: datetime,
     missing_date_policy: MissingDatePolicy,
 ) -> str | None:
-    if published_at is None and updated_at is None and missing_date_policy == "reject":
+    if (
+        published_at is None
+        and updated_at is None
+        and crawled_at is None
+        and missing_date_policy == "reject"
+    ):
         return "missing provider date metadata"
     if published_at is not None and published_at > cutoff:
         return f"published_date {published_at.date().isoformat()} is after as_of {cutoff.date().isoformat()}"
     if updated_at is not None and updated_at > cutoff:
         return f"updated_date {updated_at.date().isoformat()} is after as_of {cutoff.date().isoformat()}"
+    if crawled_at is not None and crawled_at > cutoff:
+        return f"crawled_date {crawled_at.date().isoformat()} is after as_of {cutoff.date().isoformat()}"
     return None
 
 

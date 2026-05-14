@@ -92,9 +92,8 @@ class ExaProvider:
                     "score": item.get("score", 1.0 - ((index - 1) * 0.1)),
                     "provider": self.name,
                     "published_date": item.get("publishedDate") or item.get("published_date"),
-                    "updated_date": item.get("updatedDate")
-                    or item.get("updated_date")
-                    or item.get("lastCrawledDate"),
+                    "updated_date": item.get("updatedDate") or item.get("updated_date"),
+                    "crawled_date": item.get("lastCrawledDate") or item.get("crawledDate"),
                 }
             )
         return normalized

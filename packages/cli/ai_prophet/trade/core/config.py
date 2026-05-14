@@ -19,6 +19,7 @@ class SearchConfig:
     provider: str = "brave"
     as_of: str | None = None
     missing_date_policy: str = "reject"
+    sandbox_fetch_multiplier: int = 2
     max_queries_per_market: int = 1
     max_results_per_query: int = 3
     mock: bool = False

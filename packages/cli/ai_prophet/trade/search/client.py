@@ -101,6 +101,7 @@ class SearchClient:
         self.max_concurrent = config.max_concurrent
         self.max_html_bytes = config.max_html_bytes
         self.max_extract_chars = config.max_extract_chars
+        self.sandbox_fetch_multiplier = max(1, config.sandbox_fetch_multiplier)
 
         # ---------------------------------------------------------------------
         # aiohttp session management
@@ -405,11 +406,12 @@ class SearchClient:
         )
         self.last_rejected = []
         self.last_warnings = []
+        provider_limit = self._provider_limit(limit=limit, as_of=cutoff)
 
         if self._provider is not None:
-            results = await self._search_provider(query, limit, as_of=cutoff)
+            results = await self._search_provider(query, provider_limit, as_of=cutoff)
         else:
-            results = await self._search_brave(query, limit)
+            results = await self._search_brave(query, provider_limit)
 
         if not results:
             logger.warning(f"No URLs found for query: '{query}'")
@@ -436,7 +438,12 @@ class SearchClient:
             len(results),
             query,
         )
-        return sandboxed.accepted
+        return sandboxed.accepted[:limit]
+
+    def _provider_limit(self, *, limit: int, as_of: datetime | None) -> int:
+        if as_of is None:
+            return limit
+        return max(limit, limit * self.sandbox_fetch_multiplier)
 
     async def _search_provider(
         self,

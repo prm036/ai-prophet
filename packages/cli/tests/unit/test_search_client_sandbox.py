@@ -16,9 +16,12 @@ from ai_prophet.trade.search.sandbox import parse_as_of
 class FakeProvider:
     name = "fake"
 
+    def __init__(self) -> None:
+        self.seen_limits: list[int] = []
+
     async def search(self, session: object, request: ProviderSearchRequest) -> list[dict[str, Any]]:
         assert request.query == "market question"
-        assert request.limit == 3
+        self.seen_limits.append(request.limit)
         return [
             {
                 "url": "https://example.com/old",
@@ -69,9 +72,10 @@ class FakeSession:
 
 
 def test_search_client_keeps_public_class_and_filters_custom_provider_results():
+    provider = FakeProvider()
     client = SearchClient(
         api_key="unused",
-        provider=FakeProvider(),
+        provider=provider,
     )
 
     try:
@@ -82,10 +86,12 @@ def test_search_client_keeps_public_class_and_filters_custom_provider_results():
     assert [item["url"] for item in results] == ["https://example.com/old"]
     assert results[0]["sandbox_status"] == "accepted"
     assert [item["url"] for item in client.last_rejected] == ["https://example.com/new"]
+    assert provider.seen_limits == [12]
 
 
 def test_search_client_uses_live_search_when_no_as_of_is_provided():
-    client = SearchClient(api_key="unused", provider=FakeProvider())
+    provider = FakeProvider()
+    client = SearchClient(api_key="unused", provider=provider)
 
     try:
         results = client.search("market question", limit=3)
@@ -98,6 +104,7 @@ def test_search_client_uses_live_search_when_no_as_of_is_provided():
     ]
     assert all(item["sandbox_status"] == "live" for item in results)
     assert client.last_rejected == []
+    assert provider.seen_limits == [3]
 
 
 def test_create_provider_supports_new_provider_names():
@@ -116,6 +123,7 @@ def test_exa_provider_applies_cutoff_and_normalizes_results():
                     "summary": "summary",
                     "text": "content",
                     "publishedDate": "2026-04-30T12:00:00Z",
+                    "lastCrawledDate": "2026-04-30T13:00:00Z",
                 }
             ]
         }
@@ -140,6 +148,7 @@ def test_exa_provider_applies_cutoff_and_normalizes_results():
     assert call["json"]["endCrawlDate"] == "2026-05-01T23:59:59.999Z"
     assert results[0]["url"] == "https://example.com/a"
     assert results[0]["published_date"] == "2026-04-30T12:00:00Z"
+    assert results[0]["crawled_date"] == "2026-04-30T13:00:00Z"
 
 
 def test_perplexity_provider_uses_next_day_before_filters():
