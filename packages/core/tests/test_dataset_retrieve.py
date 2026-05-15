@@ -4,7 +4,6 @@ import json
 from pathlib import Path
 
 import pytest
-
 from ai_prophet_core.forecast.dataset_retrieve import retrieve_dataset_events
 
 
