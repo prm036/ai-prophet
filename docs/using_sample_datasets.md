@@ -1,8 +1,7 @@
 # Using the Sample Datasets
 
 How to pull a ready-made slate of forecasting events into your bot using
-the `prophet` CLI. No GitHub clone, no `ai-prophet-datasets` SDK install —
-just one command.
+the `prophet` CLI.
 
 ## What's available
 
@@ -23,9 +22,14 @@ ground-truth `resolved_outcome`.
 
 ## Quickstart
 
-```bash
-pip install ai-prophet                    # also installs ai-prophet-core
+Make sure you have the `prophet` CLI installed, if not
 
+```bash
+pip install ai-prophet
+```
+Then you can use the `prophet forecast retrieve` command to pull the sample datasets.
+
+```bash
 # default: pulls sample-sports (latest open release)
 prophet forecast retrieve -o events.json
 
@@ -89,64 +93,6 @@ A few things worth knowing about the shape:
 - `close_time` is the deadline for accepting forecasts on that question.
   `predict` skips events whose `close_time` is already in the past.
 
-## End-to-end: pick a sample, predict, score
-
-The resolved sample is the cleanest way to feel out the full loop without
-waiting for live events to settle.
-
-One thing to know first: `prophet forecast predict` skips events whose
-`close_time` is already in the past, which is *every* event in
-`sample-resolved` by construction. So for this offline tutorial we
-generate predictions in a short Python loop instead of calling
-`predict`. Once you're working with live events from
-`prophet forecast events`, the `predict` step plugs in normally.
-
-```bash
-# 1. Pull the resolved sample
-prophet forecast retrieve \
-    --dataset sample-resolved --include-resolved \
-    -o resolved.json
-
-# 2. Score your strategy against it (predictions + actuals in one pass)
-python - <<'PY'
-import json
-from datetime import datetime, timezone
-from ai_prophet_core.forecast.schemas import Prediction, Submission
-
-events = json.load(open("resolved.json"))
-predictions = []
-actuals = {}  # market_ticker -> 1.0 or 0.0
-for e in events:
-    market_ticker = e["market_ticker"]
-    outcomes = e.get("outcomes") or []
-    if not outcomes:
-        continue
-
-    # Replace this with your real strategy. `p_yes` here is
-    # P(outcomes[0] resolves positive) — keep the convention consistent
-    # between your agent and the actuals you build.
-    p_yes = 0.5
-    predictions.append(Prediction(market_ticker=market_ticker, p_yes=p_yes))
-
-    value = (e.get("resolved_outcome") or {}).get("value") or []
-    actuals[market_ticker] = 1.0 if outcomes[0] in value else 0.0
-
-submission = Submission(timestamp=datetime.now(timezone.utc), predictions=predictions)
-open("predictions.json", "w").write(submission.model_dump_json(indent=2))
-json.dump(actuals, open("actuals.json", "w"), indent=2)
-print(f"wrote {len(predictions)} predictions and {len(actuals)} actuals")
-PY
-
-# 3. Brier-score it
-prophet forecast evaluate \
-    --submission predictions.json \
-    --actuals actuals.json
-```
-
-For the constant-`0.5` strategy above, this prints a Brier of `0.25`
-(the no-signal baseline). Swap the body of the loop for your real model
-to beat it.
-
 ## Picking a different release
 
 Every dataset currently has exactly one release (`v1.0.0`), but the flag
@@ -158,39 +104,6 @@ prophet forecast retrieve --dataset sample-sports --release v1.0.0 -o events.jso
 
 Omit `--release` and `retrieve` picks the latest *open* release; if none
 are open it falls back to the most-recent release.
-
-## Working from a local clone
-
-If you've cloned `ai-prophet-datasets` (for example to inspect a release
-in detail), you can point `retrieve` at the clone instead of GitHub:
-
-```bash
-git clone https://github.com/ai-prophet/ai-prophet-datasets
-prophet forecast retrieve \
-    --repo-path ./ai-prophet-datasets \
-    --dataset sample-entertainment \
-    -o events.json
-```
-
-Local mode reads the on-disk tree directly, so it works offline and
-always reflects whatever's checked out in your clone.
-
-## Reproducible snapshots
-
-For an evaluation you want to be able to re-run later, pin to a specific
-commit instead of `main`. Any commit sha that's reachable from a public
-branch works:
-
-```bash
-prophet forecast retrieve \
-    --dataset sample-sports \
-    --branch a1b2c3d4 \
-    -o events.json
-```
-
-Resolution edits append new commits to `tasks.jsonl`, so a fresh fetch on
-`main` will reflect them, while the pinned-sha fetch keeps showing what
-was resolved at that commit.
 
 ## Environment-variable overrides
 
@@ -206,17 +119,3 @@ to thread flags through every invocation:
 | `PA_FORECAST_DATASETS_REPO_URL` | `https://github.com/ai-prophet/ai-prophet-datasets` | Override the registry repo (for forks) |
 
 Explicit `--flag` values always win over env vars.
-
-## When the samples aren't enough
-
-These four datasets exist to let you wire up the predict-and-score loop
-quickly; they aren't the hackathon evaluation set. For the live event
-slate during the hackathon, use either:
-
-- `prophet forecast events -o events.json` — pulls the current open
-  events directly from the Prophet Arena server (needs
-  `PA_SERVER_API_KEY`), or
-- A future hackathon-specific release published into the same
-  `ai-prophet-datasets` repo — when one lands, swap in
-  `--dataset <name> --release <id>` and the rest of your pipeline keeps
-  working unchanged.
