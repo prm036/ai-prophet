@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from ai_prophet.trade.search.sandbox import (
+from ai_prophet.search.sandbox import (
     filter_sandbox_results,
     parse_as_of,
     provider_exclusive_date_cutoff,

@@ -14,6 +14,7 @@ from pathlib import Path
 import click
 from ai_prophet_core.client import ServerAPIClient
 
+from ai_prophet.search import SearchClient
 from ai_prophet.trade.agent.pipeline import AgentPipeline
 from ai_prophet.trade.core.config import ClientConfig
 from ai_prophet.trade.core.credentials import (
@@ -24,7 +25,6 @@ from ai_prophet.trade.core.credentials import (
 from ai_prophet.trade.dashboard import open_dashboard
 from ai_prophet.trade.llm import create_llm_client
 from ai_prophet.trade.runner import ExperimentRunner, _bump_slug, compute_config_hash
-from ai_prophet.trade.search import SearchClient
 
 logger = logging.getLogger(__name__)
 

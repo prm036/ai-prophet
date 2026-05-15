@@ -3,14 +3,14 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from ai_prophet.trade.search import SearchClient
-from ai_prophet.trade.search.providers import (
+from ai_prophet.search import SearchClient
+from ai_prophet.search.providers import (
     ExaProvider,
     PerplexityProvider,
     ProviderSearchRequest,
     create_provider,
 )
-from ai_prophet.trade.search.sandbox import parse_as_of
+from ai_prophet.search.sandbox import parse_as_of
 
 
 class FakeProvider:
@@ -105,6 +105,12 @@ def test_search_client_uses_live_search_when_no_as_of_is_provided():
     assert all(item["sandbox_status"] == "live" for item in results)
     assert client.last_rejected == []
     assert provider.seen_limits == [3]
+
+
+def test_trade_search_import_is_compatible():
+    from ai_prophet.trade.search import SearchClient as TradeSearchClient
+
+    assert TradeSearchClient is SearchClient
 
 
 def test_create_provider_supports_new_provider_names():

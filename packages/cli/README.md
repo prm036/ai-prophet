@@ -180,6 +180,22 @@ implicitly load `.env` files.
 | `PA_MEMORY_MAX_ROWS` | Max JSONL memory rows per participant (default `1000`) |
 | `{PROVIDER}_BASE_URL` | Base URL for OpenAI-compatible providers (e.g. `TOGETHER_BASE_URL`) |
 
+## Search Tools
+
+```python
+import os
+
+from ai_prophet.search import SearchClient
+
+search = SearchClient(provider="exa", api_key=os.environ["EXA_API_KEY"])
+try:
+    results = search.search("vietnam war", limit=3, as_of="2025-01-01")
+finally:
+    search.close()
+```
+
+Providers: `brave`, `exa`, `tavily`, `perplexity`.
+
 ## Python Integration
 
 The supported public interface for `ai-prophet` is the `prophet` CLI.
