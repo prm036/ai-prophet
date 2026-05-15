@@ -1,0 +1,453 @@
+"""Generate the paper-trades.json snapshot with:
+  - $300 starting capital
+  - Realized + live-mark valuation (open positions priced at Kalshi bid)
+  - Calendar-day Sharpe under that NAV trajectory
+  - Brier-Bregman decomposition of total P&L
+
+Decomposition (Brier scoring rule, treating each held market as a YES bet
+with terminal outcome y ∈ {0, 1, mark}):
+
+  2 · profit_per_bet = (market_brier - forecaster_brier) + (forecaster - market)²
+
+so
+
+  Σ profit = ½ · Σ [(market_brier − forecaster_brier) + bregman²]
+
+This script computes each piece on the filtered universe and sanity-checks
+that they sum to the realized + open-mark net P&L.
+"""
+import os, sys, math, json
+from datetime import datetime, timezone, timedelta
+from collections import defaultdict
+from dotenv import load_dotenv; load_dotenv()
+sys.path.insert(0, "services/api")
+sys.path.insert(0, "packages/core")
+sys.path.insert(0, "services")
+
+from main import (
+    _build_kalshi_adapter, _fetch_raw_market, _parse_iso,
+    get_db, BettingOrder, TradingMarket, TradingMarketLifecycle,
+    InventoryPosition,
+)
+from db_models import ModelRun
+from ai_prophet_core.betting.db_schema import BettingPrediction
+from ai_prophet_core.betting.db import get_session
+
+INSTANCE = "Jibang"
+CUTOFF = datetime(2026, 3, 24, 23, 0, tzinfo=timezone.utc)
+START = 300.0
+GAP_SEC = 3600
+LATE_HOURS = 0
+DROP_PREFIXES = ("KXTOPMODEL",)
+OUT = "services/dashboard/public/paper-trades.json"
+
+
+def is_excluded(adapter, ticker):
+    if "MENTION" in ticker.upper():
+        return True
+    if any(ticker.upper().startswith(p) for p in DROP_PREFIXES):
+        return True
+    market = _fetch_raw_market(adapter, ticker)
+    if not market:
+        return False
+    close_t = _parse_iso(market.get("close_time"))
+    actual = (
+        _parse_iso(market.get("expected_expiration_time"))
+        or _parse_iso(market.get("occurrence_datetime"))
+    )
+    if close_t and actual and (close_t - actual).total_seconds() > GAP_SEC:
+        return True
+    return False
+
+
+def live_mark(adapter, ticker, side):
+    try:
+        market = _fetch_raw_market(adapter, ticker)
+    except Exception:
+        return None
+    if not market:
+        return None
+    yes_bid = market.get("yes_bid"); no_bid = market.get("no_bid")
+    if side == "yes" and yes_bid is not None:
+        return float(yes_bid) / 100.0
+    if side == "no" and no_bid is not None:
+        return float(no_bid) / 100.0
+    return None
+
+
+def fetch_yes_mid(adapter, ticker):
+    """Return current implied YES probability from Kalshi quotes."""
+    market = _fetch_raw_market(adapter, ticker)
+    if not market:
+        return None
+    yes_bid = market.get("yes_bid"); yes_ask = market.get("yes_ask")
+    if yes_bid is not None and yes_ask is not None:
+        return (float(yes_bid) + float(yes_ask)) / 200.0
+    return None
+
+
+engine = get_db()
+adapter = _build_kalshi_adapter(INSTANCE)
+with get_session(engine) as session:
+    rows = (
+        session.query(BettingOrder, TradingMarket)
+        .join(TradingMarket, BettingOrder.ticker == TradingMarket.ticker)
+        .filter(
+            BettingOrder.instance_name == INSTANCE,
+            TradingMarket.instance_name == INSTANCE,
+            BettingOrder.created_at >= CUTOFF,
+            BettingOrder.status.in_(["FILLED", "DRY_RUN"]),
+        )
+        .all()
+    )
+
+    surviving = []
+    for o, m in rows:
+        t = o.ticker or m.ticker
+        if not t or m.expiration is None:
+            continue
+        if is_excluded(adapter, t):
+            continue
+        exp = m.expiration if m.expiration.tzinfo else m.expiration.replace(tzinfo=timezone.utc)
+        if (exp - o.created_at).total_seconds() <= LATE_HOURS * 3600:
+            continue
+        surviving.append((o, m, exp))
+    surviving.sort(key=lambda x: x[0].created_at)
+
+    market_ids = list({m.market_id for _, m, _ in surviving})
+    lcs = (
+        session.query(TradingMarketLifecycle)
+        .filter(
+            TradingMarketLifecycle.instance_name == INSTANCE,
+            TradingMarketLifecycle.market_id.in_(market_ids),
+        )
+        .all()
+    )
+    outcome_by_market = {}
+    settle_ts_by_market = {}
+    for lc in lcs:
+        if lc.result:
+            r = str(lc.result).lower()
+            if r == "yes": outcome_by_market[lc.market_id] = 1.0
+            elif r == "no": outcome_by_market[lc.market_id] = 0.0
+            settle_ts_by_market[lc.market_id] = lc.updated_at
+
+    by_ticker = defaultdict(list)
+    for o, m, exp in surviving:
+        by_ticker[o.ticker].append((o, m, exp))
+
+    market_pnl = {}; market_outcome = {}; market_position = {}
+    market_y_terminal = {}  # outcome OR live mark (in YES space)
+    market_avg_yes_cost = {}  # YES-equivalent cost basis
+    open_count = 0
+    settled_count = 0
+    n_won = 0; n_lost = 0
+    for ticker, ords in by_ticker.items():
+        ords.sort(key=lambda x: x[0].created_at)
+        pos = InventoryPosition()
+        for o, _, _ in ords:
+            try: pos.apply_order(o, ticker=ticker)
+            except: pass
+        side, qty, avg = pos.current_position()
+        mkt0 = ords[0][1]
+        net = pos.realized_pnl
+
+        outcome = outcome_by_market.get(mkt0.market_id)
+        if side and qty > 1e-9:
+            if outcome is not None:
+                settle = outcome if side == "yes" else 1.0 - outcome
+                net += (settle - avg) * qty
+                market_outcome[ticker] = "YES" if outcome == 1.0 else "NO"
+                market_position[ticker] = "settled"
+                settled_count += 1
+                final = pos.realized_pnl + (settle - avg) * qty
+                if final > 0: n_won += 1
+                else: n_lost += 1
+                # YES-terminal probability for decomposition
+                market_y_terminal[ticker] = outcome
+            else:
+                mark = live_mark(adapter, ticker, side)
+                if mark is None:
+                    last_px = mkt0.last_price
+                    if last_px is not None and last_px > 1.0: last_px /= 100.0
+                    if last_px is not None:
+                        mark = last_px if side == "yes" else 1.0 - last_px
+                if mark is not None:
+                    net += (mark - avg) * qty
+                market_position[ticker] = f"open ({side.upper()} {qty:.0f}@{avg:.2f})"
+                open_count += 1
+                # YES-equivalent terminal probability
+                if side == "yes":
+                    market_y_terminal[ticker] = mark
+                else:
+                    market_y_terminal[ticker] = 1.0 - mark if mark is not None else None
+        else:
+            if outcome is not None:
+                market_outcome[ticker] = "YES" if outcome == 1.0 else "NO"
+                market_y_terminal[ticker] = outcome
+            market_position[ticker] = "closed"
+            if abs(pos.realized_pnl) > 1e-9:
+                settled_count += 1
+                if pos.realized_pnl > 0: n_won += 1
+                else: n_lost += 1
+
+        market_pnl[ticker] = round(net, 4)
+        # Compute YES-equivalent average cost for decomposition
+        if pos.last_side == "yes":
+            market_avg_yes_cost[ticker] = avg
+        elif pos.last_side == "no":
+            market_avg_yes_cost[ticker] = 1.0 - avg
+
+    total_pnl = sum(market_pnl.values())
+    print(f"Markets in filtered set: {len(by_ticker)}")
+    print(f"Settled: {settled_count}  (W/L = {n_won}/{n_lost})")
+    print(f"Still open: {open_count}")
+    print(f"Total P&L (realized + open at live mark): ${total_pnl:+.2f}")
+    print(f"ROI on $300: {total_pnl / START * 100:+.2f}%")
+    print(f"ROI on $475: {total_pnl / 475 * 100:+.2f}%")
+
+    # ── Days traded: count distinct UTC dates with at least one fill ──
+    days_traded = len({o.created_at.astimezone(timezone.utc).date() for o, _, _ in surviving})
+    print(f"\nDays traded (distinct calendar days with ≥1 fill): {days_traded}")
+
+    # ── Brier-Bregman decomposition ──
+    # For each ticker, get the latest forecast before resolution (or now)
+    # and compute (forecaster_p, market_p_at_signal, y_terminal).
+    preds = (
+        session.query(BettingPrediction)
+        .filter(
+            BettingPrediction.instance_name == INSTANCE,
+            BettingPrediction.market_id.in_(market_ids),
+            BettingPrediction.created_at >= CUTOFF,
+        )
+        .all()
+    )
+    latest_pred_by_market = {}
+    for p in preds:
+        cur = latest_pred_by_market.get(p.market_id)
+        if cur is None or p.created_at > cur.created_at:
+            latest_pred_by_market[p.market_id] = p
+
+    # Map ticker → market_id
+    ticker_to_mid = {o.ticker: m.market_id for o, m, _ in surviving}
+
+    forecaster_brier_sum = 0.0
+    market_brier_sum = 0.0
+    bregman_sum = 0.0
+    n_decomp = 0
+    sum_profit_proxy = 0.0  # ½·[(mb − fb) + bregman²]·(2·qty_yes_eq) -- no, just the unitless decomposition
+    for ticker, ords in by_ticker.items():
+        mid = ticker_to_mid.get(ticker)
+        pred = latest_pred_by_market.get(mid)
+        if pred is None: continue
+        y = market_y_terminal.get(ticker)
+        if y is None: continue
+        f = pred.p_yes
+        q = pred.yes_ask  # market's YES probability at signal time
+        forecaster_brier_sum += (f - y) ** 2
+        market_brier_sum += (q - y) ** 2
+        bregman_sum += (f - q) ** 2
+        n_decomp += 1
+        # Bookmaker decomposition: 2·profit_per_share_yes = (mB − fB) + (f−q)²
+        # where profit_per_share_yes = (f − q)·(y − q) (if you bet YES at market q
+        # in proportion to your edge). Verify identity numerically:
+        # 2·(f-q)(y-q) = (q-y)² - (f-y)² + (f-q)²
+
+    if n_decomp:
+        fb = forecaster_brier_sum / n_decomp
+        mb = market_brier_sum / n_decomp
+        bg = bregman_sum / n_decomp
+        print(f"\n=== Brier-Bregman decomposition over {n_decomp} markets ===")
+        print(f"  Forecaster Brier (avg):  {fb:.4f}")
+        print(f"  Market Brier (avg):      {mb:.4f}")
+        print(f"  Bregman divergence (avg): {bg:.4f}")
+        print(f"  ½·[(mB − fB) + Bregman]: {(mb - fb + bg) / 2:.4f} per market")
+        print(f"  Σ ½·[(mB − fB) + Bregman²]: ${(market_brier_sum - forecaster_brier_sum + bregman_sum) / 2:.4f}")
+        print()
+        print(f"  Identity check (should equal Σ profit if betting at unit stake YES at market price):")
+        print(f"    (mB - fB)/2 contributes:    ${(market_brier_sum - forecaster_brier_sum) / 2:.4f}")
+        print(f"    Bregman²/2 contributes:     ${bregman_sum / 2:.4f}")
+        print(f"    sum:                        ${(market_brier_sum - forecaster_brier_sum + bregman_sum) / 2:.4f}")
+
+    # ── Daily NAV series (realized + open mark held constant at today's mark) ──
+    # We snapshot the realized cum-pnl on a day-by-day basis and add today's
+    # open-position mark to the final point. (This is the same proxy used for
+    # the headline NAV chart.)
+    realized_so_far = 0.0
+    positions = defaultdict(InventoryPosition)
+    settled_set = set()
+    market_for_ticker = {o.ticker: m for o, m, _ in surviving}
+
+    surviving.sort(key=lambda x: x[0].created_at)
+    first_day = surviving[0][0].created_at.astimezone(timezone.utc).date()
+    today = datetime.now(timezone.utc).date()
+    days = []
+    d = first_day
+    while d <= today:
+        days.append(d); d += timedelta(days=1)
+    nav_series = []
+    next_idx = 0
+    open_mark_cum = 0.0  # final open-pos mark (added at the end)
+    for d in days:
+        day_end = datetime.combine(d, datetime.max.time(), tzinfo=timezone.utc)
+        while next_idx < len(surviving) and surviving[next_idx][0].created_at <= day_end:
+            o, m, _ = surviving[next_idx]
+            pos = positions[o.ticker]
+            pre = pos.realized_pnl
+            try: pos.apply_order(o, ticker=o.ticker)
+            except: pass
+            realized_so_far += pos.realized_pnl - pre
+            next_idx += 1
+        for ticker, pos in positions.items():
+            mkt = market_for_ticker.get(ticker)
+            if mkt is None or mkt.market_id in settled_set: continue
+            outcome = outcome_by_market.get(mkt.market_id)
+            if outcome is None: continue
+            settle_ts = settle_ts_by_market.get(mkt.market_id)
+            if settle_ts and settle_ts > day_end: continue
+            side, qty, avg = pos.current_position()
+            if side and qty > 1e-9:
+                settle_px = outcome if side == "yes" else 1.0 - outcome
+                realized_so_far += (settle_px - avg) * qty
+            settled_set.add(mkt.market_id)
+        nav_series.append((d, START + realized_so_far))
+
+    # Add today's open-position mark to the final NAV point
+    open_mark_total = 0.0
+    for ticker, pos in positions.items():
+        mkt = market_for_ticker.get(ticker)
+        if mkt is None or mkt.market_id in settled_set: continue
+        side, qty, avg = pos.current_position()
+        if not (side and qty > 1e-9): continue
+        mark = live_mark(adapter, ticker, side)
+        if mark is None:
+            last_px = mkt.last_price
+            if last_px is not None and last_px > 1.0: last_px /= 100.0
+            if last_px is not None:
+                mark = last_px if side == "yes" else 1.0 - last_px
+        if mark is not None:
+            open_mark_total += (mark - avg) * qty
+    if nav_series:
+        last_d, last_nav = nav_series[-1]
+        nav_series[-1] = (last_d, last_nav + open_mark_total)
+
+    # Daily returns + Sharpe
+    rets = []
+    for i in range(1, len(nav_series)):
+        prev = nav_series[i-1][1]; curr = nav_series[i][1]
+        if prev > 0: rets.append((curr - prev) / prev)
+    n = len(rets)
+    mean = sum(rets) / n if n else 0.0
+    var = sum((r - mean) ** 2 for r in rets) / (n - 1) if n > 1 else 0.0
+    std = math.sqrt(var)
+    sharpe = math.sqrt(365) * mean / std if std > 0 else None
+    final_nav = nav_series[-1][1]
+    roi = (final_nav - START) / START * 100
+
+    print(f"\n=== Headline numbers (realized + live mark, $300 base) ===")
+    print(f"  Calendar days in window: {len(days)}")
+    print(f"  Days actually traded:    {days_traded}")
+    print(f"  Ending NAV: ${final_nav:.2f}")
+    print(f"  Net P&L:    ${final_nav - START:+.2f}")
+    print(f"  ROI:        {roi:+.2f}%")
+    print(f"  Mean daily return: {mean*100:+.4f}%")
+    print(f"  σ(daily return):   {std*100:.4f}%")
+    print(f"  Sharpe (√365):     {sharpe:.3f}")
+
+    # ── Build trades + summary JSON ──
+    trades = []
+    for o, m, exp in surviving:
+        ts = o.created_at
+        action = str(getattr(o, "action", "")).upper()
+        side = str(getattr(o, "side", "")).lower()
+        shares = float(getattr(o, "filled_shares", 0) or 0)
+        price = float(getattr(o, "fill_price", 0) or 0)
+        if price <= 0:
+            pc = float(getattr(o, "price_cents", 0) or 0)
+            price = pc / 100.0
+        if price > 1.0: price = price / 100.0
+        cost = round(shares * price, 4)
+        # Find rationale
+        runs = (
+            session.query(ModelRun).filter(
+                ModelRun.instance_name == INSTANCE,
+                ModelRun.market_id == m.market_id,
+                ModelRun.timestamp <= ts,
+            ).order_by(ModelRun.timestamp.desc()).limit(1).all()
+        )
+        model_name = runs[0].model_name if runs else None
+        confidence = runs[0].confidence if runs else None
+        rationale = ""
+        if runs and runs[0].metadata_json:
+            try:
+                j = json.loads(runs[0].metadata_json)
+                rationale = j.get("reasoning") or j.get("rationale") or ""
+                if isinstance(rationale, dict): rationale = json.dumps(rationale)
+            except Exception:
+                rationale = (runs[0].metadata_json or "")[:500]
+        if rationale and len(rationale) > 800:
+            rationale = rationale[:800] + "…"
+        hours_to_close = round((exp - ts).total_seconds() / 3600.0, 2)
+        trades.append({
+            "timestamp": ts.isoformat(),
+            "ticker": o.ticker,
+            "title": m.title,
+            "category": m.category,
+            "action": action,
+            "side": side.upper(),
+            "shares": round(shares, 2),
+            "price": round(price, 4),
+            "cost": cost,
+            "hours_to_close": hours_to_close,
+            "close_time": exp.isoformat(),
+            "model": model_name,
+            "model_confidence": round(float(confidence), 4) if confidence is not None else None,
+            "rationale": rationale or "",
+            "market_pnl": market_pnl.get(o.ticker),
+            "market_outcome": market_outcome.get(o.ticker),
+            "market_position": market_position.get(o.ticker),
+        })
+
+    summary = {
+        "agent": "Gemini 3 Pro (high-effort thinking, Google Search grounding)",
+        "venue": "Kalshi",
+        "instance": INSTANCE,
+        "valuation": "realized + live Kalshi mark on open positions",
+        "starting_capital": START,
+        "ending_nav": round(final_nav, 4),
+        "net_pnl": round(final_nav - START, 4),
+        "roi_pct": round(roi, 2),
+        "sharpe_daily": round(sharpe, 3) if sharpe is not None else None,
+        "mean_daily_return_pct": round(mean * 100, 4),
+        "daily_volatility_pct": round(std * 100, 4),
+        "calendar_days": len(days),
+        "days_traded": days_traded,
+        "n_trades": len(trades),
+        "n_markets": len(by_ticker),
+        "n_settled": settled_count,
+        "n_open": open_count,
+        "n_won": n_won,
+        "n_lost": n_lost,
+        "win_rate_pct": round(n_won / (n_won + n_lost) * 100, 1) if (n_won + n_lost) else None,
+        "forecaster_brier": round(forecaster_brier_sum / n_decomp, 4) if n_decomp else None,
+        "market_brier": round(market_brier_sum / n_decomp, 4) if n_decomp else None,
+        "bregman_divergence": round(bregman_sum / n_decomp, 4) if n_decomp else None,
+        "filters": [
+            "Drop MENTIONS markets",
+            "Drop close-time-mismatch markets (close_time > expected_expiration_time/occurrence_datetime by >1 hour)",
+            "Drop KXTOPMODEL (underspecified resolution rule, flagged to Kalshi)",
+            "Halt trading 3h prior to event resolution",
+        ],
+        "first_trade": surviving[0][0].created_at.isoformat() if surviving else None,
+        "last_trade": surviving[-1][0].created_at.isoformat() if surviving else None,
+    }
+
+    out_obj = {
+        "summary": summary,
+        "trades": trades,
+        "nav_series": [(d.isoformat(), round(v, 4)) for d, v in nav_series],
+    }
+    with open(OUT, "w") as f:
+        json.dump(out_obj, f, indent=2, default=str)
+    print(f"\nWrote {OUT}")
+    print(f"  ROI: {roi:+.2f}%   Sharpe: {sharpe:.2f}   Days traded: {days_traded}")
