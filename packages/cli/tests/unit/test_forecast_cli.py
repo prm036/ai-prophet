@@ -85,8 +85,8 @@ def test_retrieve_defaults_to_dataset_source(monkeypatch, tmp_path):
                     outcomes=["Yes", "No"],
                 )
             ],
-            "hackathon-day",
-            "2026-05-12",
+            "sample-sports",
+            "v1.0.0",
         )
 
     monkeypatch.setattr(
@@ -102,7 +102,7 @@ def test_retrieve_defaults_to_dataset_source(monkeypatch, tmp_path):
     assert result.exit_code == 0
     assert captured["dataset"] is None
     assert captured["release_id"] is None
-    assert "Retrieved 1 events from hackathon-day/2026-05-12" in result.output
+    assert "Retrieved 1 events from sample-sports/v1.0.0" in result.output
     payload = json.loads(output_path.read_text())
     assert payload[0]["market_ticker"] == "task-001"
     assert payload[0]["outcomes"] == ["Yes", "No"]
