@@ -4,7 +4,12 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
-from ai_prophet_core import mcp_server
+
+# mcp_server depends on the `fastmcp` extra (``pip install ai-prophet-core[mcp]``).
+# Skip cleanly when running tests without it (e.g. default CI install).
+pytest.importorskip("fastmcp")
+
+from ai_prophet_core import mcp_server  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
