@@ -20,7 +20,6 @@ python -m pip install ai-prophet
 For local development from this repository:
 
 ```bash
-python -m pip install -e ../ai-prophet-datasets/sdk
 python -m pip install -e packages/core
 python -m pip install -e "packages/cli[dev]"
 ```

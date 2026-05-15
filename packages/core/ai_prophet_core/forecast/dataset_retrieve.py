@@ -2,14 +2,19 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
+
+import requests
 
 from .schemas import Event
 
 DEFAULT_DATASET = "hackathon-day"
+DEFAULT_REPO_URL = "https://github.com/ai-prophet/ai-prophet-datasets"
 DATASET_ENV = "PA_FORECAST_DATASET"
 RELEASE_ENV = "PA_FORECAST_RELEASE"
 BRANCH_ENV = "PA_FORECAST_DATASET_BRANCH"
@@ -37,47 +42,26 @@ def retrieve_dataset_events(
     Returns:
         ``(events, dataset_name, release_id)``.
     """
-    try:
-        from ai_prophet_datasets import Registry
-    except ImportError as exc:  # pragma: no cover - dependency packaging guard
-        raise RuntimeError(
-            "ai-prophet-datasets is required for dataset retrieval. "
-            "Install ai-prophet with its current dependencies or install "
-            "ai-prophet-datasets separately."
-        ) from exc
-
     dataset_name = dataset or os.environ.get(DATASET_ENV) or DEFAULT_DATASET
     selected_release = release_id or os.environ.get(RELEASE_ENV)
     selected_branch = branch or os.environ.get(BRANCH_ENV) or "main"
     selected_repo_path = repo_path or os.environ.get(REPO_PATH_ENV)
-    selected_repo_url = repo_url or os.environ.get(REPO_URL_ENV)
+    selected_repo_url = repo_url or os.environ.get(REPO_URL_ENV) or DEFAULT_REPO_URL
+    local_root = Path(selected_repo_path).resolve() if selected_repo_path else None
 
-    registry_kwargs: dict[str, Any] = {
-        "repo_path": selected_repo_path,
-        "branch": selected_branch,
-    }
-    if selected_repo_url:
-        registry_kwargs["repo_url"] = selected_repo_url
-
-    with Registry(**registry_kwargs) as registry:
-        try:
-            dataset_obj = registry.get_dataset(dataset_name)
-        except KeyError as exc:
-            available = ", ".join(d.name for d in registry.list_datasets()) or "(none)"
-            raise KeyError(
-                f"dataset not found: {dataset_name}. Available datasets: {available}"
-            ) from exc
-
-        if selected_release:
-            release = dataset_obj.get_release(selected_release)
-        else:
-            release = _latest_open_release(dataset_obj)
-            if release is None:
-                raise KeyError(f"dataset has no releases: {dataset_name}")
-
-        tasks = release.tasks()
-
-    task_rows = [task.to_dict() for task in tasks]
+    registry = _load_registry(
+        repo_path=local_root,
+        repo_url=selected_repo_url,
+        branch=selected_branch,
+    )
+    dataset_obj = _find_dataset(registry, dataset_name)
+    release = _find_release(dataset_obj, selected_release)
+    task_rows = _load_tasks(
+        release,
+        repo_path=local_root,
+        repo_url=selected_repo_url,
+        branch=selected_branch,
+    )
     if not include_resolved:
         task_rows = [row for row in task_rows if row.get("resolved_outcome") is None]
 
@@ -86,19 +70,156 @@ def retrieve_dataset_events(
         "Retrieved %d event(s) from %s/%s",
         len(events),
         dataset_name,
-        release.release_id,
+        release["id"],
     )
-    return events, dataset_name, release.release_id
+    return events, dataset_name, release["id"]
 
 
-def _latest_open_release(dataset_obj: Any) -> Any | None:
-    """Return the newest open release, falling back to the newest release."""
-    if not dataset_obj.releases:
-        return None
-    for summary in dataset_obj.releases:
-        if summary.status == "open":
-            return dataset_obj.get_release(summary.id)
-    return dataset_obj.latest
+def _load_registry(
+    *,
+    repo_path: Path | None,
+    repo_url: str,
+    branch: str,
+) -> dict[str, Any]:
+    """Load registry metadata without requiring the dataset SDK package."""
+    if repo_path is not None:
+        registry_path = repo_path / "registry.json"
+        if registry_path.is_file():
+            return json.loads(registry_path.read_text())
+        return _build_local_registry(repo_path / "datasets")
+
+    return json.loads(_http_get(repo_url, branch, "registry.json"))
+
+
+def _build_local_registry(datasets_dir: Path) -> dict[str, Any]:
+    """Build a minimal registry from a local datasets tree."""
+    if not datasets_dir.is_dir():
+        raise FileNotFoundError(f"datasets directory not found: {datasets_dir}")
+
+    datasets: list[dict[str, Any]] = []
+    for dataset_dir in sorted(p for p in datasets_dir.iterdir() if p.is_dir()):
+        dataset_json = dataset_dir / "dataset.json"
+        if not dataset_json.is_file():
+            continue
+        metadata = json.loads(dataset_json.read_text())
+        releases: list[dict[str, Any]] = []
+        releases_dir = dataset_dir / "releases"
+        if releases_dir.is_dir():
+            for release_dir in sorted(p for p in releases_dir.iterdir() if p.is_dir()):
+                release_json = release_dir / "release.json"
+                tasks_path = release_dir / "tasks.jsonl"
+                if not release_json.is_file() or not tasks_path.is_file():
+                    continue
+                release = json.loads(release_json.read_text())
+                task_rows = _read_jsonl(tasks_path)
+                releases.append(
+                    {
+                        "id": release["release_id"],
+                        "release_date": release["release_date"],
+                        "status": release["status"],
+                        "task_count": len(task_rows),
+                        "resolved_count": sum(
+                            1 for row in task_rows if row.get("resolved_outcome") is not None
+                        ),
+                        "path": str(tasks_path.relative_to(datasets_dir.parent)),
+                    }
+                )
+        releases.sort(key=lambda item: item.get("release_date", ""), reverse=True)
+        datasets.append(
+            {
+                "name": metadata["name"],
+                "description": metadata.get("description", ""),
+                "releases": releases,
+            }
+        )
+
+    return {"datasets": datasets}
+
+
+def _find_dataset(registry: dict[str, Any], dataset_name: str) -> dict[str, Any]:
+    """Return a dataset entry from a registry payload."""
+    datasets = registry.get("datasets", [])
+    for dataset in datasets:
+        if dataset.get("name") == dataset_name:
+            return dataset
+    available = ", ".join(str(d.get("name")) for d in datasets) or "(none)"
+    raise KeyError(f"dataset not found: {dataset_name}. Available datasets: {available}")
+
+
+def _find_release(
+    dataset_obj: dict[str, Any],
+    release_id: str | None,
+) -> dict[str, Any]:
+    """Return the selected release, or the newest open release by default."""
+    releases = dataset_obj.get("releases", [])
+    if release_id:
+        for release in releases:
+            if release.get("id") == release_id:
+                return release
+        raise KeyError(f"release not found: {dataset_obj.get('name')}/{release_id}")
+
+    for release in releases:
+        if release.get("status") == "open":
+            return release
+    if releases:
+        return releases[0]
+    raise KeyError(f"dataset has no releases: {dataset_obj.get('name')}")
+
+
+def _load_tasks(
+    release: dict[str, Any],
+    *,
+    repo_path: Path | None,
+    repo_url: str,
+    branch: str,
+) -> list[dict[str, Any]]:
+    """Load task rows for a release."""
+    rel_path = release.get("path")
+    if not isinstance(rel_path, str) or not rel_path:
+        raise ValueError(f"release {release.get('id')} is missing a tasks path")
+    if repo_path is not None:
+        return _read_jsonl(repo_path / rel_path)
+    return _parse_jsonl(_http_get(repo_url, branch, rel_path), rel_path)
+
+
+def _read_jsonl(path: Path) -> list[dict[str, Any]]:
+    """Read JSONL rows from disk."""
+    return _parse_jsonl(path.read_text(), str(path))
+
+
+def _parse_jsonl(text: str, source: str) -> list[dict[str, Any]]:
+    """Parse a JSONL task file."""
+    rows: list[dict[str, Any]] = []
+    for line_no, line in enumerate(text.splitlines(), start=1):
+        if not line.strip():
+            continue
+        row = json.loads(line)
+        if not isinstance(row, dict):
+            raise ValueError(f"{source}:{line_no} must be a JSON object")
+        rows.append(row)
+    return rows
+
+
+def _http_get(repo_url: str, branch: str, repo_relative_path: str) -> str:
+    """Fetch a file from a public GitHub repository via the Contents API."""
+    owner, repo = _owner_repo(repo_url)
+    url = f"https://api.github.com/repos/{owner}/{repo}/contents/{repo_relative_path}"
+    response = requests.get(
+        url,
+        params={"ref": branch},
+        headers={"Accept": "application/vnd.github.raw"},
+        timeout=30,
+    )
+    response.raise_for_status()
+    return response.text
+
+
+def _owner_repo(repo_url: str) -> tuple[str, str]:
+    """Parse ``owner/repo`` from a GitHub URL."""
+    parts = repo_url.rstrip("/").removesuffix(".git").split("/")
+    if len(parts) < 2:
+        raise ValueError(f"cannot parse owner/repo from repo_url: {repo_url}")
+    return parts[-2], parts[-1]
 
 
 def _event_from_task(row: dict[str, Any]) -> Event:
