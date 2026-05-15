@@ -26,12 +26,13 @@ mcp = FastMCP(
         "You are connected to Prophet Arena, a platform for trading on real "
         "prediction markets. There are two modes:\n\n"
         "BENCHMARK MODE (evaluating models on a deterministic clock): "
-        "create_experiment -> add_participant -> claim_tick -> get_markets -> "
-        "submit_trades -> finalize_tick -> (repeat). Each tick is a 15-minute "
-        "decision window; results are comparable across models.\n\n"
-        "BETTING / FORECAST MODE (exchange execution + probability leaderboard): "
-        "get_current_markets to browse, forecast_to_trade or place_trade to bet "
-        "on Kalshi (paper or live), submit_forecast for the probability leaderboard."
+        "health_check -> create_experiment -> add_participant -> claim_tick "
+        "-> get_markets -> submit_trades -> finalize_tick -> (repeat). Each "
+        "tick is a 15-minute decision window; results are comparable across "
+        "models.\n\n"
+        "BETTING MODE (Kalshi exchange execution): get_current_markets to "
+        "browse, forecast_to_trade to bet from a probability, place_trade "
+        "for direct execution (paper or live based on engine config)."
     ),
 )
 
@@ -345,17 +346,6 @@ def get_current_markets() -> dict:
             "market_count": resp.market_count,
             "markets": markets,
         }
-
-
-@mcp.tool
-def submit_forecast(predictions: list[dict]) -> dict:
-    """Submit probability predictions to the forecast leaderboard.
-
-    Each prediction needs: market_ticker, p_yes (0-1), rationale (optional).
-    Team is resolved from the API key.
-    """
-    with _get_client() as api:
-        return _model_to_dict(api.submit_forecast(predictions))
 
 
 # ---------------------------------------------------------------------------
