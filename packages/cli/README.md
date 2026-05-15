@@ -93,13 +93,13 @@ prophet forecast evaluate ...         # Score a predictions file locally
 ## Forecast Workflow
 
 ```bash
-# Option A: fetch the latest hackathon slate from ai-prophet-datasets
+# Option A: fetch the latest event slate from ai-prophet-datasets
 prophet forecast retrieve -o events.json
 
-# Optional: pin a specific dataset release
+# Optional: pick a specific dataset and release
 prophet forecast retrieve \
-  --dataset hackathon-day \
-  --release 2026-05-12 \
+  --dataset sample-entertainment \
+  --release v1.0.0 \
   -o events.json
 
 # Option B: fetch the current forecast slate from the server
@@ -178,7 +178,7 @@ implicitly load `.env` files.
 | `BRAVE_API_KEY` | Brave Search API key (optional, for web search) |
 | `PA_SERVER_URL` | Override API URL |
 | `PA_SERVER_API_KEY` | Core API key for authenticated benchmark requests |
-| `PA_FORECAST_DATASET` | Default dataset for `prophet forecast retrieve` (default: `hackathon-day`) |
+| `PA_FORECAST_DATASET` | Default dataset for `prophet forecast retrieve` (default: `sample-sports`) |
 | `PA_FORECAST_RELEASE` | Optional default release id; omitted means latest open release |
 | `PA_FORECAST_DATASET_BRANCH` | Dataset registry branch or commit sha (default: `main`) |
 | `PA_FORECAST_DATASETS_REPO_PATH` | Optional local clone for dataset reads |

@@ -8,17 +8,17 @@ from ai_prophet_core.forecast.dataset_retrieve import retrieve_dataset_events
 
 
 def _write_dataset(repo: Path, *, include_deadline: bool = True) -> None:
-    release_dir = repo / "datasets" / "hackathon-day" / "releases" / "2026-05-12"
+    release_dir = repo / "datasets" / "sample-sports" / "releases" / "v1.0.0"
     release_dir.mkdir(parents=True)
-    (repo / "datasets" / "hackathon-day" / "dataset.json").write_text(
-        json.dumps({"name": "hackathon-day", "description": "Hackathon tasks"}) + "\n"
+    (repo / "datasets" / "sample-sports" / "dataset.json").write_text(
+        json.dumps({"name": "sample-sports", "description": "Sports sample"}) + "\n"
     )
     (release_dir / "release.json").write_text(
         json.dumps(
             {
-                "release_id": "2026-05-12",
-                "release_date": "2026-05-12",
-                "description": "Day 1",
+                "release_id": "v1.0.0",
+                "release_date": "2026-05-15",
+                "description": "Initial sample",
                 "status": "open",
             }
         )
@@ -51,8 +51,8 @@ def test_retrieve_dataset_events_maps_latest_open_release(tmp_path: Path):
 
     events, dataset, release = retrieve_dataset_events(repo_path=str(tmp_path))
 
-    assert dataset == "hackathon-day"
-    assert release == "2026-05-12"
+    assert dataset == "sample-sports"
+    assert release == "v1.0.0"
     assert len(events) == 1
     event = events[0]
     assert event.market_ticker == "task-001"
