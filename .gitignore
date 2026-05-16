@@ -36,3 +36,4 @@ htmlcov/
 
 # OS/editor
 .DS_Store
+*.json
