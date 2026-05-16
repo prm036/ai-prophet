@@ -4,7 +4,12 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
-from ai_prophet_core import mcp_server
+
+# mcp_server depends on the `fastmcp` extra (``pip install ai-prophet-core[mcp]``).
+# Skip cleanly when running tests without it (e.g. default CI install).
+pytest.importorskip("fastmcp")
+
+from ai_prophet_core import mcp_server  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -87,6 +92,10 @@ def test_get_current_markets_uses_market_snapshot_fields(monkeypatch):
     assert result["requested_as_of_ts"] == "2026-03-01T11:55:00+00:00"
     assert result["data_as_of_ts"] == "2026-03-01T11:56:00+00:00"
     assert result["market_count"] == 1
+
+
+def test_forecast_submission_tool_is_not_exposed():
+    assert not hasattr(mcp_server, "submit_forecast")
 
 
 def test_get_betting_engine_uses_db_backing(monkeypatch):

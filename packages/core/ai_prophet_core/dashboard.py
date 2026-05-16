@@ -1,23 +1,37 @@
 """Lightweight dashboard for the Prophet Arena trade benchmark.
 
-Serves HTML at / and proxies /api/* to the core API so CORS is
-never an issue regardless of server config. The slug filter is
-baked into the HTML at generation time.
+Serves HTML at / and proxies /api/* to the core API so CORS and the
+API key are handled in-process (the key never reaches the browser).
+The slug filter is baked into the HTML at generation time.
 
-Usage:
-    prophet trade dashboard
+Standalone usage (requires only ai-prophet-core)::
+
+    prophet-dashboard --slug my_experiment
+
+    # or equivalently
+    python -m ai_prophet_core.dashboard --slug my_experiment
+
+Via the CLI package (re-exported as ``prophet trade dashboard``)::
+
     prophet trade dashboard --slug my_experiment
     prophet trade eval run -m openai:gpt-5.2 --slug test --dashboard
+
+The dashboard reads ``PA_SERVER_URL`` and ``PA_SERVER_API_KEY`` from the
+environment when CLI args are not supplied.
 """
 
+import argparse
 import json
 import os
+import sys
 import threading
 import webbrowser
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse
 
 import httpx
+
+from .client import DEFAULT_API_URL
 
 DEFAULT_REPORTING_API_URL = "https://trade-ui-api-998105805337.us-central1.run.app"
 
@@ -87,6 +101,7 @@ def open_dashboard(
     slug: str = "",
     port: int = 8501,
     api_key: str | None = None,
+    reporting_url: str | None = None,
     reporting_api_url: str | None = None,
     *,
     block: bool = False,
@@ -101,7 +116,8 @@ def open_dashboard(
     _API_URL = api_url.rstrip("/")
     _API_KEY = api_key or ""
     _REPORTING_API_URL = (
-        reporting_api_url
+        reporting_url
+        or reporting_api_url
         or os.environ.get("PA_TRADE_UI_API_URL")
         or os.environ.get("PA_REPORTING_API_URL")
         or DEFAULT_REPORTING_API_URL
@@ -109,25 +125,75 @@ def open_dashboard(
     _SLUG = slug
     _HTML_BYTES = _HTML.replace("__REQUESTED_SLUG__", json.dumps(slug)).encode()
 
-    import click
-
     server = HTTPServer(("127.0.0.1", port), _Handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     webbrowser.open(f"http://localhost:{port}")
-    click.echo(f"  Dashboard: http://localhost:{port}")
-    click.echo(f"  Core API:  {_API_URL}")
-    click.echo(f"  Report API: {_REPORTING_API_URL}")
+    print(f"  Dashboard: http://localhost:{port}")
+    print(f"  Core API:  {_API_URL}")
+    print(f"  Report API: {_REPORTING_API_URL}")
     if slug:
-        click.echo(f"  Experiment: {slug}")
+        print(f"  Experiment: {slug}")
 
     if block:
         try:
-            click.echo("  Press Ctrl+C to stop the dashboard")
+            print("  Press Ctrl+C to stop the dashboard")
             server.serve_forever()
         except KeyboardInterrupt:
-            click.echo("\nDashboard stopped")
+            print("\nDashboard stopped")
         finally:
             server.server_close()
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Standalone entry point: ``prophet-dashboard`` and ``python -m ai_prophet_core.dashboard``."""
+    parser = argparse.ArgumentParser(
+        prog="prophet-dashboard",
+        description="Live dashboard for the Prophet Arena trade benchmark.",
+    )
+    parser.add_argument(
+        "--api-url",
+        default=os.environ.get("PA_SERVER_URL") or DEFAULT_API_URL,
+        help="Core API base URL (env: PA_SERVER_URL).",
+    )
+    parser.add_argument(
+        "--api-key",
+        default=os.environ.get("PA_SERVER_API_KEY"),
+        help="Prophet Arena API key (env: PA_SERVER_API_KEY).",
+    )
+    parser.add_argument(
+        "--slug",
+        default="",
+        help="Filter the dashboard to a single experiment slug.",
+    )
+    parser.add_argument(
+        "--reporting-url",
+        default=os.environ.get("PA_REPORTING_API_URL"),
+        help=(
+            "Read-only reporting API for PnL history and leaderboard "
+            "(env: PA_REPORTING_API_URL). Defaults to the hosted "
+            "trade-ui-api service."
+        ),
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=8501,
+        help="Local port to bind (default: 8501).",
+    )
+    args = parser.parse_args(argv)
+
+    if not args.api_key:
+        parser.error("missing API key: pass --api-key or set PA_SERVER_API_KEY")
+
+    open_dashboard(
+        api_url=args.api_url,
+        slug=args.slug,
+        port=args.port,
+        api_key=args.api_key,
+        reporting_url=args.reporting_url,
+        block=True,
+    )
+    return 0
 
 
 # ---------------------------------------------------------------------------
@@ -840,3 +906,7 @@ async function toggleReasons() {
 </body>
 </html>
 """
+
+
+if __name__ == "__main__":
+    sys.exit(main())

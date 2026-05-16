@@ -29,6 +29,11 @@ class CreateExperimentResponse(BaseModel):
     created: bool
 
 
+class CompleteExperimentResponse(BaseModel):
+    status: str
+    idempotent: bool
+
+
 class UpsertParticipantRequest(BaseModel):
     model: str
     rep: int = 0
@@ -306,19 +311,6 @@ class ForecastEventResponse(BaseModel):
     close_time: datetime
     actual_outcome: float | None = None
     resolved_at: datetime | None = None
-
-
-class ForecastSubmitRequest(BaseModel):
-    """Request body for submitting predictions."""
-    predictions: list[dict]
-
-
-class ForecastSubmitResponse(BaseModel):
-    """Response after submitting predictions."""
-    submission_id: int
-    team_name: str
-    n_predictions: int
-    submitted_at: datetime
 
 
 class ForecastRegisterTeamRequest(BaseModel):

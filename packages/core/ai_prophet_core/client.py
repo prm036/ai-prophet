@@ -18,6 +18,7 @@ from .client_models import (
     CandidatesResponse,
     ClaimTickRequest,
     ClaimTickResponse,
+    CompleteExperimentResponse,
     CompleteTickResponse,
     CreateExperimentRequest,
     CreateExperimentResponse,
@@ -29,8 +30,6 @@ from .client_models import (
     ForecastRegisterTeamRequest,
     ForecastRegisterTeamResponse,
     ForecastScoreEntry,
-    ForecastSubmitRequest,
-    ForecastSubmitResponse,
     HealthResponse,
     MarketSnapshot,
     PlanRequest,
@@ -422,15 +421,6 @@ class ServerAPIClient:
         payload = response.json()
         return [ForecastEventResponse.model_validate(item) for item in payload]
 
-    def submit_forecast(
-        self,
-        predictions: list[dict],
-    ) -> ForecastSubmitResponse:
-        """Submit predictions for open forecast events. Team is resolved from the API key."""
-        req = ForecastSubmitRequest(predictions=predictions)
-        response = self._post("/forecast/submit", json=req.model_dump(mode="json"))
-        return self._parse_response(response, ForecastSubmitResponse)
-
     def register_forecast_team(
         self,
         team_name: str,
@@ -472,6 +462,13 @@ class ServerAPIClient:
         response = self._get("/forecast/scores")
         payload = response.json()
         return [ForecastScoreEntry.model_validate(item) for item in payload]
+
+    def complete_experiment(self, experiment_id: str) -> CompleteExperimentResponse:
+        """Force-stop a tick-mode experiment before its ``n_ticks`` budget
+        is exhausted. Idempotent.
+        """
+        response = self._post(f"/experiments/{experiment_id}:complete")
+        return self._parse_response(response, CompleteExperimentResponse)
 
     # --- Utilities ------------------------------------------------------------
 

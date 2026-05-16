@@ -1,10 +1,9 @@
 """Forecast CLI for the Prophet Arena hackathon.
 
 Usage:
-    prophet forecast retrieve --deadline "2026-03-15T23:59:59Z" --output events.json
+    prophet forecast retrieve --output events.json
     prophet forecast predict --events events.json --agent-url http://localhost:8000/predict
-    prophet forecast evaluate --submission submission.json --actuals actuals.json
-    prophet forecast submit --submission submission.json --server-url http://localhost:8000
+    prophet forecast evaluate --submission predictions.json --actuals actuals.json
     prophet forecast leaderboard --server-url http://localhost:8000
 """
 
@@ -15,14 +14,14 @@ import logging
 import os
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import click
 import requests
 from ai_prophet_core.client import ServerAPIClient
+from ai_prophet_core.forecast.dataset_retrieve import retrieve_dataset_events
 from ai_prophet_core.forecast.evaluate import load_actuals, load_submission, score
-from ai_prophet_core.forecast.kalshi_client import KalshiForecastClient
-from ai_prophet_core.forecast.retrieve import select_events
-from ai_prophet_core.forecast.schemas import Prediction, Submission
+from ai_prophet_core.forecast.schemas import MarketProbability, Prediction, Submission
 
 logger = logging.getLogger(__name__)
 
@@ -47,21 +46,36 @@ def cli(ctx: click.Context) -> None:
 
 @cli.command(name="retrieve")
 @click.option(
-    "--deadline",
-    required=True,
-    help="ISO 8601 deadline — only include markets closing before this time.",
-)
-@click.option(
-    "--events-per-category",
-    type=int,
-    default=3,
-    show_default=True,
-    help="Max events to select per category.",
-)
-@click.option(
-    "--categories",
+    "--dataset",
     default=None,
-    help="Comma-separated category list (defaults to built-in set).",
+    help="Dataset name (default: PA_FORECAST_DATASET or sample-sports).",
+)
+@click.option(
+    "--release",
+    "release_id",
+    default=None,
+    help="Dataset release id (default: PA_FORECAST_RELEASE or latest open release).",
+)
+@click.option(
+    "--repo-path",
+    default=None,
+    help="Local ai-prophet-datasets clone. If omitted, reads the public registry.",
+)
+@click.option(
+    "--repo-url",
+    default=None,
+    help="Dataset registry repo URL override.",
+)
+@click.option(
+    "--branch",
+    default=None,
+    help="Dataset registry branch or commit sha (default: PA_FORECAST_DATASET_BRANCH or main).",
+)
+@click.option(
+    "--include-resolved",
+    is_flag=True,
+    default=False,
+    help="Include tasks that already have resolved_outcome.",
 )
 @click.option(
     "--output",
@@ -72,37 +86,38 @@ def cli(ctx: click.Context) -> None:
 )
 @click.option("--verbose", "-v", is_flag=True, help="Enable debug logging.")
 def retrieve(
-    deadline: str,
-    events_per_category: int,
-    categories: str | None,
+    dataset: str | None,
+    release_id: str | None,
+    repo_path: str | None,
+    repo_url: str | None,
+    branch: str | None,
+    include_resolved: bool,
     output: str,
     verbose: bool,
 ) -> None:
-    """Retrieve and select daily events from Kalshi across categories."""
+    """Retrieve forecast events from the default dataset release."""
     _setup_logging(verbose)
 
-    deadline_dt = datetime.fromisoformat(deadline.replace("Z", "+00:00"))
-    if deadline_dt.tzinfo is None:
-        deadline_dt = deadline_dt.replace(tzinfo=UTC)
-
-    cat_list = [c.strip() for c in categories.split(",")] if categories else None
-
-    client = KalshiForecastClient()
     try:
-        events = select_events(
-            client,
-            deadline_dt,
-            events_per_category=events_per_category,
-            categories=cat_list,
+        events, dataset_name, selected_release = retrieve_dataset_events(
+            dataset=dataset,
+            release_id=release_id,
+            repo_path=repo_path,
+            repo_url=repo_url,
+            branch=branch,
+            include_resolved=include_resolved,
         )
-    finally:
-        client.close()
+    except Exception as exc:
+        raise click.ClickException(str(exc)) from exc
 
     out_path = Path(output)
     out_path.write_text(
         json.dumps([e.model_dump(mode="json") for e in events], indent=2)
     )
-    click.echo(f"Selected {len(events)} events → {out_path}")
+    click.echo(
+        f"Retrieved {len(events)} events from "
+        f"{dataset_name}/{selected_release} → {out_path}"
+    )
 
 
 @cli.command(name="events")
@@ -271,9 +286,9 @@ def _save_team_name_to_env(team_name: str) -> None:
 @click.option(
     "--output",
     "-o",
-    default="submission.json",
+    default="predictions.json",
     show_default=True,
-    help="Output submission file path.",
+    help="Output predictions file path.",
 )
 @click.option(
     "--timeout",
@@ -299,7 +314,7 @@ def predict(
     ticker: tuple[str, ...],
     verbose: bool,
 ) -> None:
-    """Collect predictions from an agent endpoint and produce a submission file."""
+    """Collect predictions from an agent endpoint and write a local predictions file."""
     _setup_logging(verbose)
 
     if not agent_url and not local:
@@ -358,22 +373,36 @@ def predict(
                 resp.raise_for_status()
                 result = resp.json()
 
-            p_yes = float(result["p_yes"])
-            predictions.append(
-                Prediction(
-                    market_ticker=market_ticker,
-                    p_yes=p_yes,
-                    rationale=result.get("rationale"),
+            if "probabilities" in result:
+                probabilities = _normalize_probabilities(result["probabilities"])
+                predictions.append(
+                    Prediction(
+                        market_ticker=market_ticker,
+                        probabilities=probabilities,
+                        rationale=result.get("rationale"),
+                    )
                 )
-            )
-            click.echo(f"  {market_ticker}: p_yes={p_yes:.3f}")
+                summary = ", ".join(
+                    f"{p.market}={p.probability:.3f}" for p in probabilities
+                )
+                click.echo(f"  {market_ticker}: probabilities=[{summary}]")
+            else:
+                p_yes = float(result["p_yes"])
+                predictions.append(
+                    Prediction(
+                        market_ticker=market_ticker,
+                        p_yes=p_yes,
+                        rationale=result.get("rationale"),
+                    )
+                )
+                click.echo(f"  {market_ticker}: p_yes={p_yes:.3f}")
         except Exception as e:
             logger.warning("Skipping %s: %s", market_ticker, e)
             click.echo(f"  {market_ticker}: SKIPPED ({e})")
             continue
 
     if not predictions:
-        raise click.ClickException("No predictions collected -- nothing to submit.")
+        raise click.ClickException("No predictions collected -- nothing to write.")
 
     submission = Submission(
         timestamp=datetime.now(UTC),
@@ -381,8 +410,50 @@ def predict(
     )
 
     out_path = Path(output)
-    out_path.write_text(submission.model_dump_json(indent=2))
-    click.echo(f"\nSubmission ({len(predictions)} predictions) → {out_path}")
+    out_path.write_text(submission.model_dump_json(indent=2, exclude_none=True))
+    click.echo(f"\nPredictions ({len(predictions)} markets) → {out_path}")
+
+
+def _normalize_probabilities(raw: Any) -> list[MarketProbability]:
+    """Validate and normalize an agent probability-distribution response."""
+    if isinstance(raw, dict):
+        items = [
+            {"market": market, "probability": probability}
+            for market, probability in raw.items()
+        ]
+    elif isinstance(raw, list):
+        items = raw
+    else:
+        raise TypeError("probabilities must be a list or object")
+
+    values = [
+        (str(item["market"]), float(item["probability"]))
+        for item in items
+    ]
+    if any(probability > 1.0 for _market, probability in values):
+        values = [(market, probability / 100) for market, probability in values]
+
+    probabilities = [
+        MarketProbability(
+            market=market,
+            probability=max(0.0, min(1.0, probability)),
+        )
+        for market, probability in values
+    ]
+    if not probabilities:
+        raise ValueError("probabilities must contain at least one entry")
+
+    total = sum(item.probability for item in probabilities)
+    if total <= 0:
+        raise ValueError("probabilities must sum to a positive value")
+
+    return [
+        MarketProbability(
+            market=item.market,
+            probability=item.probability / total,
+        )
+        for item in probabilities
+    ]
 
 
 @cli.command(name="evaluate")
@@ -390,7 +461,7 @@ def predict(
     "--submission",
     required=True,
     type=click.Path(exists=True),
-    help="Path to submission JSON file.",
+    help="Path to predictions JSON file.",
 )
 @click.option(
     "--actuals",
@@ -400,7 +471,7 @@ def predict(
 )
 @click.option("--verbose", "-v", is_flag=True, help="Enable debug logging.")
 def evaluate(submission: str, actuals: str, verbose: bool) -> None:
-    """Evaluate a submission against actual outcomes using Brier score."""
+    """Evaluate a predictions file against actual outcomes using Brier score."""
     _setup_logging(verbose)
 
     sub = load_submission(submission)
@@ -424,44 +495,6 @@ def _resolve_server(server_url: str | None, api_key: str | None) -> tuple[str, s
             "API key required: use --api-key or set PA_SERVER_API_KEY"
         )
     return url, key
-
-
-@cli.command(name="submit")
-@click.option(
-    "--submission",
-    required=True,
-    type=click.Path(exists=True),
-    help="Path to submission JSON file (from predict step).",
-)
-@click.option(
-    "--server-url",
-    default=None,
-    help="Core API URL (default: PA_SERVER_URL env var).",
-)
-@click.option(
-    "--api-key",
-    default=None,
-    help="API key (default: PA_SERVER_API_KEY env var).",
-)
-@click.option("--verbose", "-v", is_flag=True, help="Enable debug logging.")
-def submit(submission: str, server_url: str | None, api_key: str | None, verbose: bool) -> None:
-    """Submit predictions to the forecast server."""
-    _setup_logging(verbose)
-
-    url, key = _resolve_server(server_url, api_key)
-
-    sub = load_submission(submission)
-    predictions = [p.model_dump() for p in sub.predictions]
-
-    client = ServerAPIClient(base_url=url, api_key=key)
-    try:
-        result = client.submit_forecast(predictions=predictions)
-    finally:
-        client.close()
-
-    click.echo(f"Submitted {result.n_predictions} predictions for team '{result.team_name}'")
-    click.echo(f"Submission ID: {result.submission_id}")
-    click.echo(f"Timestamp: {result.submitted_at}")
 
 
 @cli.command(name="leaderboard")
