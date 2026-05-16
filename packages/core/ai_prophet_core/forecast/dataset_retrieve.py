@@ -13,7 +13,7 @@ import requests
 
 from .schemas import Event
 
-DEFAULT_DATASET = "hackathon-day"
+DEFAULT_DATASET = "sample-sports"
 DEFAULT_REPO_URL = "https://github.com/ai-prophet/ai-prophet-datasets"
 DATASET_ENV = "PA_FORECAST_DATASET"
 RELEASE_ENV = "PA_FORECAST_RELEASE"

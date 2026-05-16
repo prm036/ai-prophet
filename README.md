@@ -13,6 +13,13 @@ LLM benchmark client and SDK for Prophet Arena prediction-market evaluation.
 - `packages/core` - typed SDK (`ai-prophet-core`) for API models and client calls
 - `packages/cli` - benchmark runner and CLI package (`ai-prophet`, command `prophet`)
 
+## Docs
+
+- [Build a trading bot](docs/build_a_bot.md) - end-to-end guide for writing
+  a custom bot against the Prophet Arena benchmark using `ai-prophet-core`
+- [Using the sample datasets](docs/using_sample_datasets.md) - pull a
+  ready-made event slate from `ai-prophet-datasets` via `prophet forecast retrieve`
+
 ## Local Setup
 
 ```bash

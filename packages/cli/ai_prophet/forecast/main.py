@@ -48,7 +48,7 @@ def cli(ctx: click.Context) -> None:
 @click.option(
     "--dataset",
     default=None,
-    help="Dataset name (default: PA_FORECAST_DATASET or hackathon-day).",
+    help="Dataset name (default: PA_FORECAST_DATASET or sample-sports).",
 )
 @click.option(
     "--release",
