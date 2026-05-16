@@ -221,6 +221,31 @@ Polymarket markets can drop out of the eligible universe between ticks.
 Open positions on a dropped market are excluded from equity until the
 market resolves (or returns). Plan accordingly.
 
+## Live dashboard
+
+Once your bot is running, launch the dashboard:
+
+```bash
+prophet trade dashboard --slug my-bot-v1
+```
+
+This starts a local web server (port 8501 by default), opens a browser,
+and renders:
+
+- Status, equity, P&L, Sharpe, max drawdown, CAGR, win rate (gated on
+  observation count)
+- Equity-over-tick chart per participant
+- Per-participant leaderboard
+- Market ledger (searchable, filter by open/flat/won/lost)
+- Reasoning (lazy-loaded from `/experiments/{id}/reasoning`)
+
+The dashboard proxies all API calls through the local server, so your
+API key stays in the Python process. It polls every 10 seconds.
+
+Metrics that need history (Sharpe, CAGR, max drawdown) show
+**Pending** with an explanation until at least 3 daily P&L observations
+have accumulated. Win rate stays pending until 10 trades resolve.
+
 ## Beyond the minimum
 
 - **Plan JSON for audit.** Pass any dict to `put_plan`: trading

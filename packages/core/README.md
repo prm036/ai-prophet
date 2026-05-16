@@ -4,38 +4,47 @@
 [![PyPI: ai-prophet-core](https://img.shields.io/badge/PyPI-ai--prophet--core-blue.svg)](https://pypi.org/project/ai-prophet-core/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://github.com/ai-prophet/ai-prophet/blob/main/LICENSE)
 
-SDK for Prophet Arena. Read prediction markets, run benchmark experiments,
-and place trades on Kalshi.
+Typed Python SDK for the Prophet Arena prediction-market trading benchmark.
+Bundles a CLI dashboard and an optional MCP server.
 
 ```bash
 pip install ai-prophet-core
+export PA_SERVER_URL=https://api.aiprophet.dev
+export PA_SERVER_API_KEY=prophet_xxx_yyy
 ```
 
-## Browse Markets
-
-Fetch the current market snapshot without creating an experiment or claiming
-a tick. Returns Prophet Arena's curated universe (liquid markets filtered by
-volume, quote freshness, and time to resolution).
+## Browse markets
 
 ```python
 from ai_prophet_core import ServerAPIClient
 
-with ServerAPIClient(base_url="...", api_key="prophet_...") as api:
+with ServerAPIClient(base_url="https://api.aiprophet.dev", api_key="prophet_...") as api:
     snapshot = api.get_market_snapshot()
-    for market in snapshot.markets:
-        print(f"{market.market_id}: {market.question}")
-        print(f"  bid={market.quote.best_bid} ask={market.quote.best_ask}")
+    for m in snapshot.markets:
+        print(f"{m.market_id}: bid={m.quote.best_bid} ask={m.quote.best_ask}  {m.question}")
 ```
 
-## Run a Benchmark Experiment
+No experiment or tick claim required. Returns the curated tradeable
+universe filtered by volume, quote freshness, and time to resolution.
 
-Tick-based experiment with deterministic scoring. Claim ticks, submit intents,
-finalize. The server owns execution and scoring.
+## Watch a running bot
+
+```bash
+prophet-dashboard --slug my-bot
+```
+
+Opens `http://localhost:8501` and renders the live state for one experiment:
+equity over time, Sharpe / max drawdown / win rate, open positions, fills.
+Polls every 10 seconds. Configure via flags or env vars (`PA_SERVER_URL`,
+`PA_SERVER_API_KEY`, `PA_REPORTING_API_URL`).
+
+## Run a benchmark experiment
+
+Tick-based, deterministic scoring. The server owns execution.
 
 ```python
 import time
-
-from ai_prophet_core import ServerAPIClient
+from ai_prophet_core import ServerAPIClient, TradeIntentRequest
 from ai_prophet_core.arena import BenchmarkSession
 
 with ServerAPIClient(base_url="...", api_key="...") as api:
@@ -46,7 +55,7 @@ with ServerAPIClient(base_url="...", api_key="...") as api:
         config_json={"description": "test run"},
         n_ticks=24,
     )
-    session.upsert_participant(model="custom:my-agent")
+    part = session.upsert_participant(model="custom:my-agent")
 
     while True:
         lease = session.claim_tick()
@@ -57,37 +66,33 @@ with ServerAPIClient(base_url="...", api_key="...") as api:
             continue
 
         tick = session.load_candidates(lease)
-        lease = tick.lease
-        candidates = tick.candidates
-        portfolio = session.get_portfolio(participant_idx=0)
+        portfolio = session.get_portfolio(part.participant_idx)
+        intents = my_strategy(tick.candidates.markets, portfolio)  # your code
 
-        # Your agent logic here
-        plan_json, intents = my_agent(candidates, portfolio)
-
-        session.put_plan(lease, participant_idx=0, plan_json=plan_json)
-        session.submit_intents(lease, participant_idx=0, intents=intents)
-        session.finalize(lease, participant_idx=0)
-        session.complete_tick(lease)
+        session.put_plan(tick.lease, part.participant_idx, {})  # optional
+        session.submit_intents(tick.lease, part.participant_idx, intents)
+        session.finalize(tick.lease, part.participant_idx)
+        session.complete_tick(tick.lease)
 ```
 
-## Place a Trade on Kalshi (Beta)
+Full walkthrough including the ruleset, common pitfalls, and an LLM-driven
+example: [docs/build_a_bot.md](https://github.com/ai-prophet/ai-prophet/blob/main/docs/build_a_bot.md).
 
-> **Beta.** The betting engine API is functional but may change across
-> minor releases. Pin to a specific version if you depend on it.
+## Trade on Kalshi (beta)
 
-Direct trade execution. Routes to paper (simulated fill) or live
-Kalshi based on the `paper` flag.
+Direct execution path, separate from the benchmark. Paper by default;
+real orders when `paper=False` plus Kalshi credentials.
 
 ```python
 from ai_prophet_core.betting import BettingEngine
 
 engine = BettingEngine(paper=True)
 
-# Option A: you decide side and size
-result = engine.make_trade("kalshi:TICKER", side="yes", shares=10, price=0.65)
+# Option A: you pick side and size
+engine.make_trade("kalshi:TICKER", side="yes", shares=10, price=0.65)
 
-# Option B: strategy decides from your probability forecast
-result = engine.trade_from_forecast(
+# Option B: strategy sizes from a probability forecast
+engine.trade_from_forecast(
     market_id="kalshi:TICKER",
     p_yes=0.72,
     yes_ask=0.65,
@@ -95,37 +100,47 @@ result = engine.trade_from_forecast(
 )
 ```
 
-Set `paper=False` for real orders. Requires `KALSHI_API_KEY_ID` and
-`KALSHI_PRIVATE_KEY_B64` environment variables.
+Real orders require `KALSHI_API_KEY_ID` and `KALSHI_PRIVATE_KEY_B64`.
 
-## MCP Server
+## MCP server
 
-Exposes all of the above as MCP tools for Claude Desktop, Cursor, etc.
+Exposes the SDK as tools for Claude Desktop, Cursor, and other MCP clients.
 
 ```bash
-pip install ai-prophet-core[mcp]
+pip install "ai-prophet-core[mcp]"
 prophet-mcp
 ```
 
 Tools: `health_check`, `create_experiment`, `add_participant`, `claim_tick`,
-`get_progress`, `get_markets`, `submit_trades`, `finalize_tick`, `get_portfolio`,
-`get_reasoning`, `get_current_markets`, `forecast_to_trade`, `place_trade`.
+`get_progress`, `get_markets`, `submit_trades`, `finalize_tick`,
+`get_portfolio`, `get_reasoning`, `complete_experiment`,
+`get_current_markets`, `forecast_to_trade`, `place_trade`.
 
-## Environment Variables
+## Scripts installed
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `PA_SERVER_URL` | No | Override default API URL |
-| `PA_SERVER_API_KEY` | Yes (for authenticated endpoints) | Prophet Arena API key |
-| `KALSHI_API_KEY_ID` | For live trading | Kalshi API key ID |
-| `KALSHI_PRIVATE_KEY_B64` | For live trading | Base64-encoded Kalshi private key |
-| `KALSHI_BASE_URL` | No | Override default Kalshi endpoint |
-| `LIVE_BETTING_ENABLED` | No | Enable betting engine in CLI |
-| `LIVE_BETTING_DRY_RUN` | No | Paper mode flag (default: true) |
+| Command | Purpose |
+|---|---|
+| `prophet-dashboard` | Local web dashboard for one experiment |
+| `prophet-mcp` | MCP server (requires `[mcp]` extra) |
+
+## Environment variables
+
+| Variable | Required | Default |
+|---|---|---|
+| `PA_SERVER_URL` | No | `https://api.aiprophet.dev` |
+| `PA_SERVER_API_KEY` | For any authenticated call | none |
+| `PA_REPORTING_API_URL` | No (dashboard only) | hosted reporting URL |
+| `KALSHI_API_KEY_ID` | For live Kalshi orders | none |
+| `KALSHI_PRIVATE_KEY_B64` | For live Kalshi orders | none |
+| `KALSHI_BASE_URL` | No | Kalshi default |
 
 ## Development
 
 ```bash
-pip install -e packages/core
-pytest packages/core/tests/
+pip install -e .
+pytest tests/
 ```
+
+## License
+
+MIT.

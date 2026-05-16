@@ -25,6 +25,7 @@ mcp = ["fastmcp>=3.0"]
 
 [project.scripts]
 prophet-mcp = "ai_prophet_core.mcp_server:main"
+prophet-dashboard = "ai_prophet_core.dashboard:main"
 
 [project.urls]
 Homepage = "https://www.prophetarena.co"
