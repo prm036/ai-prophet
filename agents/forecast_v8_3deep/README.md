@@ -6,6 +6,9 @@ on top of the `ai-prophet` SDK. Implements the AIA Forecaster paper
 extremization, tiered guardrail, Ballotpedia profile injection, OpenRouter
 native-search backend, strict temporal debiasing).
 
+**📊 Full 26-event benchmark results**: see [`benchmarks/BENCHMARK_RESULTS.md`](benchmarks/BENCHMARK_RESULTS.md) — `agent_v8_3deep_orall` scored **mean Brier 0.3247** vs prior-best `v8+Platt` at **0.390** (−16.7% relative). Per-category, per-event breakdown + methodology + lookahead-debiasing audit all in the benchmark doc.
+
+
 ## TL;DR — what's in here
 
 ```
