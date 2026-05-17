@@ -190,7 +190,10 @@ from typing import Any
 
 from dotenv import load_dotenv
 from openai import OpenAI
-from tavily import TavilyClient
+try:
+    from tavily import TavilyClient
+except ImportError:
+    TavilyClient = None  # Tavily is optional; OR-search is the primary backend
 
 import kalshi_history
 
@@ -205,11 +208,11 @@ BUFFER_DAYS = int(os.environ.get("FORECAST_BUFFER_DAYS", "3"))
 WINDOW_DAYS = int(os.environ.get("FORECAST_WINDOW_DAYS", "90"))
 HAIKU_MODEL = os.environ.get("FORECAST_HAIKU_MODEL", "anthropic/claude-haiku-4.5")
 
-# Models for individual agent slots
-OPUS_MODEL = os.environ.get("FORECAST_OPUS", "anthropic/claude-opus-4.7")
-GPT5_MODEL = os.environ.get("FORECAST_GPT5", "openai/gpt-5")
-GEMINI_MODEL = os.environ.get("FORECAST_GEMINI", "google/gemini-2.5-pro")
-META_REASONER = os.environ.get("FORECAST_META_REASONER", "anthropic/claude-opus-4.7")
+# Models for individual agent slots (cost-optimized for 200-event eval)
+OPUS_MODEL = os.environ.get("FORECAST_OPUS", "anthropic/claude-sonnet-4")
+GPT5_MODEL = os.environ.get("FORECAST_GPT5", "openai/gpt-4.1-mini")
+GEMINI_MODEL = os.environ.get("FORECAST_GEMINI", "google/gemini-2.5-flash")
+META_REASONER = os.environ.get("FORECAST_META_REASONER", "anthropic/claude-sonnet-4")
 
 REASONING_MODELS = {OPUS_MODEL, META_REASONER, GEMINI_MODEL}
 
@@ -248,11 +251,12 @@ TRACES_DIR = HERE / "data" / "v8_3deep_orall_traces"
 USE_OR_SEARCH = os.environ.get("V83DEEP_OR_SEARCH", "1") == "1"
 ORSEARCH_DEBIASED = os.environ.get("ORSEARCH_DEBIASED", "1") == "1"
 
-# Deep agentic agents config — now 3 agents, all three major vendors
-N_DEEP_AGENTS = int(os.environ.get("V83DEEP_N_AGENTS", "3"))
+# Deep agentic agents config — disabled by default for cost savings
+# (deep agents are the most expensive component: ~$0.50-0.80/event)
+N_DEEP_AGENTS = int(os.environ.get("V83DEEP_N_AGENTS", "1"))
 DEEP_AGENT_MODELS = os.environ.get(
     "V83DEEP_AGENT_MODELS",
-    "anthropic/claude-opus-4.7,openai/gpt-5,google/gemini-2.5-pro",
+    "anthropic/claude-sonnet-4,openai/gpt-4.1-mini,google/gemini-2.5-flash",
 ).split(",")
 DEEP_AGENT_MAX_ITERS = int(os.environ.get("V83DEEP_AGENT_MAX_ITERS", "4"))
 DEEP_AGENT_MAX_TAVILY = int(os.environ.get("V83DEEP_AGENT_MAX_TAVILY", "5"))
@@ -607,10 +611,17 @@ def _or_client() -> OpenAI:
     return _openrouter
 
 
-def _tav_client() -> TavilyClient:
+def _tav_client() -> "TavilyClient | None":
     global _tavily
     if _tavily is None:
-        _tavily = TavilyClient(api_key=os.environ["TAVILY_API_KEY"])
+        if TavilyClient is None:
+            logger.warning("tavily-python not installed — Tavily search unavailable")
+            return None
+        api_key = os.environ.get("TAVILY_API_KEY")
+        if not api_key:
+            logger.warning("TAVILY_API_KEY not set — Tavily search unavailable")
+            return None
+        _tavily = TavilyClient(api_key=api_key)
     return _tavily
 
 
@@ -664,6 +675,8 @@ def _gen_queries(event: dict) -> list[str]:
 
 def _search_tavily(queries: list[str], cutoff_dt: datetime) -> list[dict]:
     tav = _tav_client()
+    if tav is None:
+        return []
     start = (cutoff_dt - timedelta(days=WINDOW_DAYS)).strftime("%Y-%m-%d")
     end = cutoff_dt.strftime("%Y-%m-%d")
     out: list[dict] = []
@@ -727,9 +740,11 @@ def _summarize(event: dict, results: list[dict]) -> str:
 # ============================== KALSHI HISTORICAL ==============================
 def _kalshi_outcome_prices(event_ticker: str, outcomes: list[str],
                            cutoff_dt: datetime) -> tuple[dict[str, float], dict[str, str]]:
-    import sys
-    sys.path.insert(0, "/workspace/ai-prophet/packages/core")
-    from ai_prophet_core.forecast.kalshi_client import KalshiForecastClient
+    try:
+        from ai_prophet_core.forecast.kalshi_client import KalshiForecastClient
+    except ImportError:
+        logger.warning("ai_prophet_core not installed — Kalshi prices unavailable")
+        return {}, {o: "no_market" for o in outcomes}
 
     client = KalshiForecastClient()
     markets = []
@@ -950,7 +965,7 @@ def _submit_supervisor_tool(outcomes: list[str]) -> dict:
 
 
 SUPERVISOR_MAX_ITERS = int(os.environ.get("V8SUPER_SUPERVISOR_MAX_ITERS", "4"))
-SUPERVISOR_MODEL = os.environ.get("V8SUPER_SUPERVISOR_MODEL", "anthropic/claude-opus-4.7")
+SUPERVISOR_MODEL = os.environ.get("V8SUPER_SUPERVISOR_MODEL", "anthropic/claude-sonnet-4")
 
 
 # ============================== DEEP AGENT INFRASTRUCTURE =================
@@ -1407,9 +1422,8 @@ def predict(event: dict) -> dict:
         close_str = event.get("close_time") or ""
         try:
             real_res = datetime.fromisoformat(close_str.replace("Z", "+00:00"))
-            real_res = real_res - timedelta(days=4)
         except Exception:
-            real_res = datetime.now(tz=timezone.utc)
+            real_res = datetime.now(tz=timezone.utc) + timedelta(days=BUFFER_DAYS)
     cutoff_dt = real_res - timedelta(days=BUFFER_DAYS)
     logger.info("v8 %s real_resolution=%s cutoff=%s",
                 market_ticker, real_res.date(), cutoff_dt.date())

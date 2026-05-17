@@ -35,7 +35,7 @@ from pathlib import Path
 
 logger = logging.getLogger("ballotpedia")
 
-_CACHE_DIR_DEFAULT = "/root/ballotpedia_cache"
+_CACHE_DIR_DEFAULT = str(Path(__file__).parent / ".cache" / "ballotpedia")
 CACHE_DIR = Path(os.environ.get("BALLOTPEDIA_CACHE", _CACHE_DIR_DEFAULT))
 
 _USER_AGENT = (

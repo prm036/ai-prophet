@@ -31,20 +31,11 @@ load_dotenv()
 
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(name)s [%(request_id)s] %(message)s",
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
 )
-
-class _RIDFilter(logging.Filter):
-    def filter(self, record):
-        if not hasattr(record, "request_id"):
-            record.request_id = "-"
-        return True
-
-
-logging.getLogger().addFilter(_RIDFilter())
 logger = logging.getLogger("forecast.server")
 
-import agent_aia as agent  # noqa: E402  -- faithful AIA Forecaster (arXiv 2511.07678): M=10 agentic-search + supervisor + Platt α=√3
+import agent_v8_3deep_orall as agent
 
 TIMEOUT_SEC = float(os.environ.get("FORECAST_TIMEOUT_SEC", "480"))  # 8 min
 CACHE_TTL_SEC = float(os.environ.get("FORECAST_CACHE_TTL_SEC", "1800"))  # 30 min
@@ -99,12 +90,12 @@ async def _predict_with_timeout(ev: dict, request_id: str) -> dict:
             timeout=TIMEOUT_SEC,
         )
     except asyncio.TimeoutError:
-        logger.warning("agent timeout after %.0fs; using uniform fallback",
-                       TIMEOUT_SEC, extra={"request_id": request_id})
+        logger.warning("[%s] agent timeout after %.0fs; using uniform fallback",
+                       request_id, TIMEOUT_SEC)
         return _uniform(ev.get("outcomes") or ["Yes", "No"])
     except Exception as exc:
-        logger.warning("agent raised %s (%s); using uniform fallback",
-                       type(exc).__name__, exc, extra={"request_id": request_id})
+        logger.warning("[%s] agent raised %s (%s); using uniform fallback",
+                       request_id, type(exc).__name__, exc)
         return _uniform(ev.get("outcomes") or ["Yes", "No"])
 
 
@@ -116,8 +107,7 @@ async def predict(event: Event, request: Request):
 
     cached = _cached(key)
     if cached:
-        logger.info("cache HIT %s outcomes=%d", key, len(ev.get("outcomes") or []),
-                    extra={"request_id": request_id})
+        logger.info("[%s] cache HIT %s outcomes=%d", request_id, key, len(ev.get("outcomes") or []))
         return cached
 
     t0 = time.perf_counter()
@@ -129,28 +119,27 @@ async def predict(event: Event, request: Request):
     probs = result.get("probabilities") or []
     have = {p.get("market") for p in probs}
     if not out_set or have != out_set:
-        logger.warning("validation FAIL for %s: expected %s, got %s; using uniform",
-                       key, out_set, have, extra={"request_id": request_id})
+        logger.warning("[%s] validation FAIL for %s: expected %s, got %s; using uniform",
+                       request_id, key, out_set, have)
         result = _uniform(ev.get("outcomes") or ["Yes", "No"])
     for p in result["probabilities"]:
         p["probability"] = max(0.0, min(1.0, float(p["probability"])))
 
     _store(key, result)
-    logger.info("predicted %s in %.2fs outcomes=%d",
-                key, dt, len(result["probabilities"]),
-                extra={"request_id": request_id})
+    logger.info("[%s] predicted %s in %.2fs outcomes=%d",
+                request_id, key, dt, len(result["probabilities"]))
     return result
 
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "agent": "aia", "cache_size": len(_cache)}
+    return {"status": "ok", "agent": "v8_3deep_orall", "cache_size": len(_cache)}
 
 
 @app.get("/")
 async def root():
     return {
         "service": "prophet-arena-forecast-agent",
-        "agent": "aia (Faithful reproduction of arXiv 2511.07678)",
+        "agent": "v8_3deep_orall (cost-optimized for forecast)",
         "endpoints": ["/predict (POST)", "/health (GET)"],
     }
