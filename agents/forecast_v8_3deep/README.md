@@ -1,48 +1,135 @@
 # v8_3deep — Prophet Hacks 2026 Forecast-track agent
 
-A multi-agent forecasting ensemble for the Prophet Arena Forecast track, built
-on top of the `ai-prophet` SDK. Implements the AIA Forecaster paper
-(arXiv 2511.07678) with several practical extensions (Kalshi-blend, Platt
-extremization, tiered guardrail, Ballotpedia profile injection, OpenRouter
-native-search backend, strict temporal debiasing).
+## 👉 Where the latest agent lives
 
-**📊 Full 26-event benchmark results**: see [`benchmarks/BENCHMARK_RESULTS.md`](benchmarks/BENCHMARK_RESULTS.md) — `agent_v8_3deep_orall` scored **mean Brier 0.3247** vs prior-best `v8+Platt` at **0.390** (−16.7% relative). Per-category, per-event breakdown + methodology + lookahead-debiasing audit all in the benchmark doc.
+**Latest shipping agent**: [`agent_v8_3deep_orall.py`](agent_v8_3deep_orall.py)
 
+- Full file path in this fork:
+  **`agents/forecast_v8_3deep/agent_v8_3deep_orall.py`**
+- Full-stack architecture: 5 lightweight slots (4 evidence-first + 1
+  narrative-reactive) + 3 deep agentic agents (Opus 4.7 / GPT-5 / Gemini 2.5 Pro)
+  + AIA-style agentic supervisor, every search through OpenRouter's native
+  `openrouter:web_search` tool
+- Full 26-event benchmark: **mean Brier 0.3247** vs prior best (v8+Platt 0.390) — see
+  [`benchmarks/BENCHMARK_RESULTS.md`](benchmarks/BENCHMARK_RESULTS.md)
+- Lookahead-audit verified clean: **0/26 events leak post-resolution citations** — see
+  [`benchmarks/LOOKAHEAD_AUDIT.md`](benchmarks/LOOKAHEAD_AUDIT.md)
+- Per-event chain-of-thought post-mortem: [`benchmarks/COT_POST_MORTEM.md`](benchmarks/COT_POST_MORTEM.md)
 
-## TL;DR — what's in here
+**Quick run:**
+```bash
+# Single event
+V83DEEP_AGENT_MODULE=agent_v8_3deep_orall \
+  V83DEEP_SAVE_TRACES=1 \
+  python scripts/run_v8_3deep_single.py KXOHPRIMARY-15D26
+
+# Full 26-event benchmark (parallel)
+ORALL_FETCH_PAGE_DATES=0 \
+  python scripts/run_v8_3deep_orall_full.py 4
+
+# As a Prophet Arena agent server
+V83DEEP_AGENT_MODULE=agent_v8_3deep_orall \
+  uvicorn server:app --host 0.0.0.0 --port 8000
+```
+
+---
+
+## Repository layout (fork)
+
+```
+akshayg108/ai-prophet/                  (fork of ai-prophet/ai-prophet, branch: forecast/v8_3deep_agents)
+├── README.md                           (upstream — unchanged)
+├── LICENSE                             (upstream MIT — unchanged)
+├── CONTRIBUTING.md                     (upstream — unchanged)
+├── .pre-commit-config.yaml             (upstream — unchanged)
+├── .gitignore                          (upstream + we added an *.json exception for our agent data)
+├── packages/                           (upstream ai-prophet SDK + CLI — unchanged)
+│   ├── core/
+│   └── cli/
+├── skills/                             (upstream — unchanged)
+├── docs/                               (upstream — unchanged)
+└── agents/                             ← OUR ONLY ADDITION
+    └── forecast_v8_3deep/              ← all our work lives here
+```
+
+Everything we contributed lives under **`agents/forecast_v8_3deep/`**. The
+rest of the repo is upstream `ai-prophet/ai-prophet` — we did not modify
+any existing files except `.gitignore` (to allow our agent's sample data
+to be tracked).
+
+## Our directory in detail: `agents/forecast_v8_3deep/`
 
 ```
 agents/forecast_v8_3deep/
-├── agent_v8_3deep.py            # Baseline: Tavily brief + 4 lite + 3 deep + supervisor + Platt
-├── agent_v8_3deep_orsearch.py   # + OR-search shared brief (Pattern A)
-├── agent_v8_3deep_evfirst.py    # + evidence-first prompts (Path A+B)
-├── agent_v8_3deep_orall.py      # All-in: OR-search across all 7 agents + supervisor (Pattern A+B+all-OR-search)
-├── temporal_debias.py           # 6-layer lookahead-clean filter for retrospective testing
-├── ballotpedia.py               # Candidate-profile fetcher (HTML scrape, lookahead-stripped)
-├── orsearch_brief.py            # Haiku + openrouter:web_search → debiased shared brief
-├── aia_prompts.py               # Verbatim AIA paper prompts (forecaster + supervisor)
-├── kalshi_history.py            # Pre-resolution Kalshi candle prices (T-3d snapshot)
-├── server.py                    # FastAPI /predict + /health endpoints
-├── data/
-│   ├── sample_resolved_events.json   # 26-event smoke set (events as Prophet Arena sends them)
-│   ├── actuals.json                  # Ground truth (POST-HOC scoring only — agent never reads)
-│   ├── real_resolution_dates.json    # Per-event real resolution dates (for retrospective cutoff)
-│   └── sample_traces/                # 3 traces showing agent reasoning + scores
-│       ├── v8_3deep/
-│       └── v8_3deep_orall/
-├── scripts/
-│   ├── run_v8_3deep_single.py        # Run any variant on a single event by ticker
-│   └── simulate_adaptive_platt.py    # Counterfactual Platt-alpha sweep on saved traces
-└── papers_analysis/                  # Background research
-    ├── aia_forecaster_analysis.txt        # arXiv 2511.07678 deep-dive
-    ├── kalshibench_analysis.txt           # KalshiBench 300-event analysis + per-category yes-rates
-    ├── silicon_crowd_analysis.txt         # Wisdom-of-silicon-crowd paper
-    ├── AIA_PAPER_TO_CODE_MAPPING.txt      # Component-by-component fidelity audit
-    ├── CATEGORIES_AND_APIS.md             # Best specialized API per Prophet Arena category
-    ├── FINAL_ARCHITECTURE_TO_WIN.txt
-    ├── AUDIT_RESPONSE.txt
-    └── SEARCH_PROVIDERS_ANALYSIS.txt
+│
+├── README.md                                ← this document
+│
+├── ── AGENT VARIANTS (latest → earliest, ablation order) ──
+│   ├── agent_v8_3deep_orall.py              ← 🏆 LATEST — full-stack, mean Brier 0.3247
+│   ├── agent_v8_3deep_evfirst.py            ← evidence-first prompts (Path A + B)
+│   ├── agent_v8_3deep_orsearch.py           ← OR-search brief only (Pattern A)
+│   └── agent_v8_3deep.py                    ← baseline (Tavily brief + Ballotpedia)
+│
+├── ── SUPPORTING MODULES (imported by the agents) ──
+│   ├── temporal_debias.py                   ← 6-layer lookahead-clean filter
+│   ├── ballotpedia.py                       ← candidate-profile fetcher (HTML scrape, debiased)
+│   ├── orsearch_brief.py                    ← Haiku + openrouter:web_search → shared brief
+│   ├── aia_prompts.py                       ← verbatim AIA paper prompts
+│   ├── kalshi_history.py                    ← Kalshi T-3d candle prices
+│   └── server.py                            ← FastAPI /predict + /health endpoints
+│
+├── ── BENCHMARK RESULTS — orall on the official sample-resolved set ──
+│   └── benchmarks/
+│       ├── BENCHMARK_RESULTS.md             ← full results, all 26 events by category
+│       ├── COT_POST_MORTEM.md               ← per-event CoT deconstruction + suggested improvements
+│       └── LOOKAHEAD_AUDIT.md               ← zero-leak audit (26/26 events clean)
+│
+├── ── SCRIPTS ──
+│   └── scripts/
+│       ├── run_v8_3deep_single.py           ← run any variant on a single event
+│       ├── run_v8_3deep_orall_full.py       ← full 26-event parallel benchmark
+│       ├── audit_citation_dates.py          ← lookahead-leak audit runner
+│       ├── finalize_benchmark_report.py     ← regenerate BENCHMARK_RESULTS.md from predictions JSON
+│       └── simulate_adaptive_platt.py       ← counterfactual Platt-α analysis (no API calls)
+│
+├── ── DATA ──
+│   └── data/
+│       ├── sample_resolved_events.json      ← 26-event smoke set (from official sample-resolved/v1.0.0)
+│       ├── actuals.json                     ← ground truth (POST-HOC scoring only — agent never reads)
+│       ├── real_resolution_dates.json       ← per-event resolution dates for cutoff calc
+│       ├── predictions_v8_3deep_orall.json  ← raw predictions from the full benchmark
+│       └── sample_traces/
+│           ├── v8_3deep/                    (2 traces, baseline-variant smoke)
+│           ├── v8_3deep_orall/              (1 trace, orall pre-benchmark debug)
+│           └── v8_3deep_orall_full_benchmark/  ← 26 traces from THE benchmark — full per-agent CoT
+│
+└── ── PAPERS ANALYSIS — research backing the architecture ──
+    └── papers_analysis/
+        ├── aia_forecaster_analysis.txt              (Bridgewater AIA paper deep-dive)
+        ├── kalshibench_analysis.txt                 (KalshiBench 300-event analysis)
+        ├── silicon_crowd_analysis.txt               (Wisdom of Silicon Crowd paper)
+        ├── AIA_PAPER_TO_CODE_MAPPING.txt            (per-component fidelity audit)
+        ├── CATEGORIES_AND_APIS.md                   (best specialized API per category)
+        ├── FINAL_ARCHITECTURE_TO_WIN.txt
+        ├── AUDIT_RESPONSE.txt
+        └── SEARCH_PROVIDERS_ANALYSIS.txt
 ```
+
+## Variant comparison
+
+| Variant | Brief backend | Lite prompts | Narrative slot | Deep search | OH-15 honest Brier | Full-smoke mean Brier |
+|---|---|---|---|---|---:|---:|
+| `agent_v8_3deep` | Tavily | conservative | — | Tavily | 1.907 | (not benchmarked) |
+| `agent_v8_3deep_orsearch` | OR-search | conservative | — | Tavily | 1.896 | (not benchmarked) |
+| `agent_v8_3deep_evfirst` | OR-search | evidence-first | yes | Tavily | 1.902 | (not benchmarked) |
+| **`agent_v8_3deep_orall`** ⭐ | OR-search | evidence-first | yes | OR-search | 1.905 | **0.3247** |
+
+The three earlier variants are kept for ablation analysis — each demonstrates
+the marginal contribution of a single architectural decision (Pattern A
+brief swap, evidence-first prompts, all-OR-search). Only `orall` was run
+through the full 26-event benchmark.
+
+---
 
 ## Architecture (final variant — `agent_v8_3deep_orall`)
 
@@ -96,51 +183,28 @@ agents/forecast_v8_3deep/
 ```
 
 The downstream math layers (5/6/7) are the safety net that lets the LLM
-ensemble (3) reason from evidence without aggressive prompt anchoring.
-
-## Variant comparison on the OH-15 catastrophic-miss event
-
-The single hardest event in the 26-event smoke. Don Leonard (Cornell PhD,
-OSU professor, arrested at "No Kings" protest March 28) beat Adam Miller
-(former state rep, retired Army colonel, Strickland + AFGE-endorsed,
-3:1 fundraising advantage). Kalshi had Miller at 0.91 three days pre-primary.
-
-| Variant | Brief backend | Lite prompts | Narrative slot | Deep search | Honest OH-15 Brier |
-|---|---|---|---|---|---|
-| `agent_v8_3deep` | Tavily | conservative | — | Tavily | **1.907** |
-| `agent_v8_3deep_orsearch` | OR-search (Anthropic native) | conservative | — | Tavily | 1.896 |
-| `agent_v8_3deep_evfirst` | OR-search | evidence-first | yes | Tavily | 1.902 |
-| **`agent_v8_3deep_orall`** | OR-search | evidence-first | yes | **OR-search + temporal_debias** | **1.699** |
-
-The `orall` variant saves **0.21 Brier on the worst event** vs baseline by
-giving every agent + supervisor access to local Ohio outlets (Columbus
-Dispatch March 29 arrest article, fox28columbus, abc6onyourside Grove City
-coverage) that Tavily's index doesn't crawl.
+ensemble reason from evidence without aggressive prompt anchoring.
 
 ## Lookahead debiasing (retrospective testing only)
 
 For LIVE forecasts on future events, none of this is needed — the future
 doesn't exist yet so it can't leak. For retrospective smoke tests on
-resolved events, we need explicit defenses.
+resolved events, we apply 6 layers (full detail in
+[`benchmarks/LOOKAHEAD_AUDIT.md`](benchmarks/LOOKAHEAD_AUDIT.md)):
 
-`temporal_debias.py` applies 6 layers:
+1. URL date parse — drop citations with `/YYYY/MM/DD/` ≥ cutoff
+2. Page-fetch metadata — `<meta property="article:published_time">`, JSON-LD `datePublished`
+3. Content-date scan — "Updated/Published <Month DD, YYYY>" markers
+4. Sentence-level redaction — winner verbs, vote totals, dates in cutoff window
+5. Citation min-content filter — drop redacted content < 100 chars
+6. Synthesized-brief redaction — same sentence filter on Haiku's summary
 
-1. **URL-date parse**: drop citations where `/YYYY/MM/DD/` in URL ≥ cutoff
-2. **Page-fetch metadata**: HTTP fetch the URL, parse `<meta property="article:published_time">`, `<time datetime="...">`, JSON-LD `datePublished`
-3. **Content-date scan**: "Updated/Published <Month DD, YYYY>" in body
-4. **Sentence-level redaction**: drop sentences containing winner-revealing verbs (won/defeated/advanced), vote totals, resolution-state language, or explicit dates within ±3 days of cutoff
-5. **Citation-content min-chars**: drop citations whose redacted content is <100 chars (mostly winner-statement)
-6. **Synthesized-brief redaction**: same sentence-level filter on Haiku's summary
+Ballotpedia has its own strip — removes "is on the ballot in the general
+election" (implies primary-won), "Next election DATE" (only present on
+winners' profiles), past-tense "ran for election", and the "page was
+current at the end of the official's last term" marker.
 
-Verified clean on OH-15 — preserves the pre-cutoff arrest story
-("Don Leonard arrested at Ohio 'No Kings' protest", dispatch.com 2026-03-29)
-while stripping all post-resolution winner statements and vote tallies.
-
-`ballotpedia.py` has its own lookahead strip — removes "is on the ballot in
-the general election" (implies primary-won), "Next election DATE" (only
-present on primary winners' profiles), past-tense "ran for election" (race
-over), and the "This page was current at the end of the official's last
-term" marker.
+**Audit result**: 0/26 events leak post-resolution citations.
 
 ## Setup
 
@@ -150,37 +214,10 @@ pip install fastapi uvicorn anthropic openai litellm tavily-python python-dotenv
 
 # Environment variables (.env or shell)
 export OPENROUTER_API_KEY=sk-or-...     # required — drives orsearch_brief + LLM calls
-export TAVILY_API_KEY=tvly-...          # required for v8_3deep / v8_3deep_orsearch / v8_3deep_evfirst
-                                         # not required for v8_3deep_orall (everything via OR)
+export TAVILY_API_KEY=tvly-...          # required for v8_3deep / orsearch / evfirst
+                                         # NOT required for v8_3deep_orall (everything via OR-search)
 export KALSHI_API_KEY=...                # optional — improves pre-resolution market price accuracy
 ```
-
-## Running smoke tests
-
-```bash
-# Single event on any variant
-V83DEEP_AGENT_MODULE=agent_v8_3deep_orall \
-  V83DEEP_SAVE_TRACES=1 \
-  python scripts/run_v8_3deep_single.py KXOHPRIMARY-15D26
-
-# Counterfactual analysis on saved traces (no API calls)
-python scripts/simulate_adaptive_platt.py
-```
-
-## Deploying as a Prophet Arena agent
-
-```bash
-# Local
-V83DEEP_AGENT_MODULE=agent_v8_3deep_orall \
-  uvicorn server:app --host 0.0.0.0 --port 8000
-
-# Endpoint contract (per Prophet Arena docs):
-#   POST /predict  with body = event JSON
-#   returns: {"probabilities": [{"market": "<outcome>", "probability": <float>}, ...]}
-# Probabilities don't need to sum to 1 — server normalizes for Brier.
-```
-
-Register the public URL at https://prophethacks.com/submit-endpoint.
 
 ## Cost per event
 
@@ -191,13 +228,13 @@ Register the public URL at https://prophethacks.com/submit-endpoint.
 | `v8_3deep_evfirst` | $1.00-1.30 | $0.10 | **$1.20-1.50** |
 | `v8_3deep_orall` | $1.00-1.30 | $0.10 brief + $0.50-0.80 deep + supervisor OR-search | **$1.80-2.40** |
 
-For the 200-event Prophet Arena eval window, budget ~$200-500 across all
-variants. We used `agent_v8_3deep_orall` for the final deploy.
+For the 200-event Prophet Arena eval window, budget ~$360–480 (well within
+the $500 OpenRouter budget).
 
 ## Key references
 
-- AIA Forecaster (Bridgewater 2026): arXiv 2511.07678
-- KalshiBench (2026): see `papers_analysis/kalshibench_analysis.txt`
+- AIA Forecaster (Bridgewater): arXiv 2511.07678 — see `papers_analysis/aia_forecaster_analysis.txt`
+- KalshiBench: see `papers_analysis/kalshibench_analysis.txt`
 - Wisdom of Silicon Crowd (Schoenegger et al.): see `papers_analysis/silicon_crowd_analysis.txt`
 - Jensen's inequality justifying mean-fallback (Halawi 2024)
 - OpenRouter `openrouter:web_search` docs (routes Claude→Anthropic-native, GPT→OpenAI-native, Gemini→Exa)
