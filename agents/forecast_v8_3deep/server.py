@@ -35,7 +35,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("forecast.server")
 
-import agent_v8_3deep_orall as agent
+import agent_v8_3deep_orall_v2 as agent
 
 TIMEOUT_SEC = float(os.environ.get("FORECAST_TIMEOUT_SEC", "480"))  # 8 min
 CACHE_TTL_SEC = float(os.environ.get("FORECAST_CACHE_TTL_SEC", "1800"))  # 30 min
@@ -133,13 +133,13 @@ async def predict(event: Event, request: Request):
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "agent": "v8_3deep_orall", "cache_size": len(_cache)}
+    return {"status": "ok", "agent": "v8_3deep_orall_v2", "cache_size": len(_cache)}
 
 
 @app.get("/")
 async def root():
     return {
         "service": "prophet-arena-forecast-agent",
-        "agent": "v8_3deep_orall (cost-optimized for forecast)",
+        "agent": "v8_3deep_orall_v2 (cost-optimized for forecast)",
         "endpoints": ["/predict (POST)", "/health (GET)"],
     }
