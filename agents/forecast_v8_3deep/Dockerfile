@@ -3,16 +3,16 @@ FROM python:3.13-slim
 WORKDIR /app
 
 # Install dependencies first (cached layer)
-COPY requirements.txt .
+COPY agents/forecast_v8_3deep/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Install ai-prophet-core (for Kalshi client)
 # In deployment, copy the package and install it
-COPY ../../packages/core /tmp/ai-prophet-core
+COPY packages/core /tmp/ai-prophet-core
 RUN pip install --no-cache-dir /tmp/ai-prophet-core && rm -rf /tmp/ai-prophet-core
 
 # Copy agent code
-COPY . .
+COPY agents/forecast_v8_3deep/ .
 
 # Create cache directories
 RUN mkdir -p /app/.cache/ballotpedia
