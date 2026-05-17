@@ -251,7 +251,7 @@ HERE = Path(__file__).parent
 RES_DATES_PATH = HERE / "data" / "real_resolution_dates.json"
 
 # ============================== CONFIG ==============================
-BUFFER_DAYS = int(os.environ.get("FORECAST_BUFFER_DAYS", "3"))
+BUFFER_DAYS = int(os.environ.get("FORECAST_BUFFER_DAYS", "0"))
 WINDOW_DAYS = int(os.environ.get("FORECAST_WINDOW_DAYS", "90"))
 HAIKU_MODEL = os.environ.get("FORECAST_HAIKU_MODEL", "anthropic/claude-haiku-4.5")
 
@@ -312,8 +312,8 @@ V2_FIX_D_TRUST_SUP_MULTI = os.environ.get("V83DEEP_V2_FIX_D_TRUST_SUP_MULTI", "0
 USE_OR_SEARCH = os.environ.get("V83DEEP_OR_SEARCH", "1") == "1"
 ORSEARCH_DEBIASED = os.environ.get("ORSEARCH_DEBIASED", "1") == "1"
 
-# Deep agentic agents config — disabled by default for cost savings
-N_DEEP_AGENTS = int(os.environ.get("V83DEEP_N_AGENTS", "1"))
+# Deep agentic agents config — now 3 agents, all three major vendors
+N_DEEP_AGENTS = int(os.environ.get("V83DEEP_N_AGENTS", "3"))
 DEEP_AGENT_MODELS = os.environ.get(
     "V83DEEP_AGENT_MODELS",
     "anthropic/claude-sonnet-4,openai/gpt-4.1-mini,google/gemini-2.5-flash",
