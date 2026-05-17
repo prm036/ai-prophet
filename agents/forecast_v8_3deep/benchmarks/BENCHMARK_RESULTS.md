@@ -136,11 +136,27 @@ The 7-agent ensemble *did* read the arrest story (verified in trace dump). 5 of 
 
 ## Methodology
 
-### Event set
-- 26 resolved events from `data/sample_resolved_events.json`
-- Categories: Sports (16) / Entertainment (4) / Elections (3) / Politics (3)
-- Resolution dates: per-event manual mapping in `data/real_resolution_dates.json`
-- **Cutoff = resolution_date − 3 days** (matches Prophet Arena T-3d snapshot convention)
+### Event set — official Prophet Arena dataset
+
+- **Source**: `sample-resolved/v1.0.0` from the official `ai-prophet-datasets`
+  registry (retrievable via the SDK):
+  ```bash
+  prophet forecast retrieve --dataset sample-resolved --include-resolved \
+      -o data/sample_resolved_events.json
+  ```
+  Verified 26/26 ticker match between our local `data/sample_resolved_events.json`
+  and the public registry as of 2026-05-17.
+
+- **Categories** are set by the API on each event's `category` field —
+  NOT chosen by us. The 4 categories present in this dataset:
+  - Sports (16 events)
+  - Entertainment (4 events)
+  - Elections (3 events)
+  - Politics (3 events)
+
+- **Resolution dates**: per-event manual mapping in `data/real_resolution_dates.json`
+  (the public dataset doesn't expose a canonical "T-3d cutoff" so we set
+  cutoff = resolution_date − 3 days per Prophet Arena's snapshot convention).
 
 ### Brier definition
 Multi-outcome formula: `sum over outcomes of (p_i − truth_indicator_i)^2`
