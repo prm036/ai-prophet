@@ -36,9 +36,12 @@ LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 
 def _worker(ticker: str) -> dict:
-    """Run agent_v8_3deep_orall on one event by ticker."""
-    # Re-import inside worker (each process has its own module state)
-    from agent_v8_3deep_orall import predict
+    """Run the configured agent module on one event by ticker."""
+    # Re-import inside worker (each process has its own module state).
+    # Module is selected via V83DEEP_AGENT_MODULE env var (default: orall).
+    import importlib
+    mod_name = os.environ.get("V83DEEP_AGENT_MODULE", "agent_v8_3deep_orall")
+    predict = importlib.import_module(mod_name).predict
 
     events = json.load(open(HERE / "data" / "sample_resolved_events.json"))
     by_tk = {e["market_ticker"]: e for e in events}
@@ -147,10 +150,12 @@ def main():
         print(f"    {cat:<14} n={len(rows):>2} mean={m:.3f}  worst={w['brier']:.3f}  ({w['ticker']}, truth={w.get('truth','')[:25]})")
 
     # Save predictions JSON
-    out = HERE / "data" / "predictions_v8_3deep_orall.json"
+    # Output filename keyed on the agent module so v2 doesn't overwrite orall
+    mod_name = os.environ.get("V83DEEP_AGENT_MODULE", "agent_v8_3deep_orall")
+    out = HERE / "data" / f"predictions_{mod_name.replace('agent_', '')}.json"
     out.write_text(json.dumps({
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "agent": "agent_v8_3deep_orall",
+        "agent": mod_name,
         "config": {
             "ORALL_FETCH_PAGE_DATES": os.environ.get("ORALL_FETCH_PAGE_DATES"),
             "V83DEEP_SAVE_TRACES": os.environ.get("V83DEEP_SAVE_TRACES"),

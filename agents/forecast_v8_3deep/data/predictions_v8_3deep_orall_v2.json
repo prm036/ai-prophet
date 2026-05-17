@@ -1,74 +1,72 @@
 {
-  "timestamp": "2026-05-17T18:01:06Z",
+  "timestamp": "2026-05-17T18:35:10Z",
   "agent": "agent_v8_3deep_orall_v2",
   "config": {
-    "V83DEEP_V2_FIX_A_MULTICLASS_PLATT": 0,
-    "V83DEEP_V2_FIX_B_DISAGREE_KALSHI": 1,
-    "V83DEEP_V2_FIX_C_SKIP_PLATT": 1,
-    "V83DEEP_V2_FIX_D_TRUST_SUP_MULTI": 0,
-    "derivation": "Counterfactual simulation from saved orall traces \u2014 math fixes only affect post-LLM layers"
+    "ORALL_FETCH_PAGE_DATES": "0",
+    "V83DEEP_SAVE_TRACES": "1"
   },
   "n_total": 26,
   "n_ok": 26,
-  "mean_brier": 0.2896525158941294,
+  "wall_seconds": 1282.7,
+  "mean_brier": 0.2684920750901583,
   "by_category": {
     "Sports": {
       "n": 16,
-      "mean_brier": 0.20158561358626045,
+      "mean_brier": 0.21826470630627454,
       "events": [
         {
           "ticker": "KXEREDIVISIEGAME-26MAY10BREHEE",
-          "brier": 0.6458949631166666,
+          "brier": 0.7497721694394468,
           "truth": "Breda"
         },
         {
           "ticker": "KXCOUNTYCHAMPMATCH-26MAY08SOMGLA",
-          "brier": 0.4723985116948603,
+          "brier": 0.6554498437673079,
           "truth": "Glamorgan"
         },
         {
+          "ticker": "KXCOUNTYCHAMPMATCH-26MAY08DURWOR",
+          "brier": 0.3783770437836137,
+          "truth": "Durham"
+        },
+        {
           "ticker": "KXCRICKETTESTMATCH-26MAY08PAKBAN",
-          "brier": 0.3208330117038799,
+          "brier": 0.31252822486625886,
           "truth": "Bangladesh"
         },
         {
-          "ticker": "KXATPCHALLENGERMATCH-26MAY10ROCJOH",
-          "brier": 0.2780783190758198,
-          "truth": "Garrett Johns"
-        },
-        {
-          "ticker": "KXCOUNTYCHAMPMATCH-26MAY08LEISUS",
-          "brier": 0.24524304469314107,
-          "truth": "Sussex"
-        },
-        {
-          "ticker": "KXWTACHALLENGERMATCH-26MAY05WATOKA",
-          "brier": 0.19920405460458063,
-          "truth": "Heather Watson"
-        },
-        {
           "ticker": "KXITFWMATCH-26MAY12NAJEBS",
-          "brier": 0.18329291524584213,
+          "brier": 0.21242762495485124,
           "truth": "Anna Lena Ebster"
         },
         {
+          "ticker": "KXWTACHALLENGERMATCH-26MAY05WATOKA",
+          "brier": 0.19598486529822629,
+          "truth": "Heather Watson"
+        },
+        {
           "ticker": "KXATPCHALLENGERMATCH-26MAY05PERLAL",
-          "brier": 0.15833381175819072,
+          "brier": 0.15751374846240165,
           "truth": "Younes Lalami Laaroussi"
         },
         {
           "ticker": "KXNHLCALDER-26",
-          "brier": 0.14323795927849117,
+          "brier": 0.14404597733052119,
           "truth": "Matthew Schaefer"
         },
         {
+          "ticker": "KXATPCHALLENGERMATCH-26MAY10ROCJOH",
+          "brier": 0.12111959638226771,
+          "truth": "Garrett Johns"
+        },
+        {
           "ticker": "KXATPCHALLENGERMATCH-26MAY05BAXARC",
-          "brier": 0.1277319210384731,
+          "brier": 0.11610611294005785,
           "truth": "Florent Bax"
         },
         {
           "ticker": "KXNBASERIES-26LALOKCR2",
-          "brier": 0.09954722,
+          "brier": 0.10383409314453124,
           "truth": "Oklahoma City"
         },
         {
@@ -82,76 +80,34 @@
           "truth": "Inter"
         },
         {
-          "ticker": "KXLIGAPORTUGAL-26",
-          "brier": 0.07024793388429752,
-          "truth": "FC Porto"
-        },
-        {
           "ticker": "KXLIGUE1-26",
           "brier": 0.07024793388429752,
           "truth": "PSG"
         },
         {
-          "ticker": "KXCOUNTYCHAMPMATCH-26MAY08DURWOR",
-          "brier": 0.04671835580993115,
-          "truth": "Durham"
-        }
-      ]
-    },
-    "Politics": {
-      "n": 3,
-      "mean_brier": 0.04713887449310711,
-      "events": [
-        {
-          "ticker": "KXVRASCOTUSVOTE-26",
-          "brier": 0.07849598573380237,
-          "truth": "3"
+          "ticker": "KXLIGAPORTUGAL-26",
+          "brier": 0.07024793388429752,
+          "truth": "FC Porto"
         },
         {
-          "ticker": "KXFEDCHAIRCOUNT-27",
-          "brier": 0.03764609307755528,
-          "truth": "54"
-        },
-        {
-          "ticker": "KXCOLOMBIASENATE-26",
-          "brier": 0.025274544667963687,
-          "truth": "Government Alliance"
-        }
-      ]
-    },
-    "Elections": {
-      "n": 3,
-      "mean_brier": 0.9998865967174065,
-      "events": [
-        {
-          "ticker": "KXOHPRIMARY-15D26",
-          "brier": 1.4947195737646253,
-          "truth": "Don Leonard"
-        },
-        {
-          "ticker": "KXWVPRIMARY-01D26",
-          "brier": 1.2624605,
-          "truth": "Vince George"
-        },
-        {
-          "ticker": "KXNEXTHUNGARYPM-26MAY01",
-          "brier": 0.2424797163875944,
-          "truth": "P\u00e9ter Magyar"
+          "ticker": "KXCOUNTYCHAMPMATCH-26MAY08LEISUS",
+          "brier": 0.04022027117061772,
+          "truth": "Sussex"
         }
       ]
     },
     "Entertainment": {
       "n": 4,
-      "mean_brier": 0.29112979555891383,
+      "mean_brier": 0.09651652761883853,
       "events": [
         {
           "ticker": "KXSURVIVORELIMINATION-26APR11",
-          "brier": 0.9640218353003085,
+          "brier": 0.1860899227389953,
           "truth": "Dee Valladares"
         },
         {
           "ticker": "KXTOURNAMENTOFCHAMPIONS-26DEC31",
-          "brier": 0.08310099981528471,
+          "brier": 0.08217993079584782,
           "truth": "Bryan Voltaggio"
         },
         {
@@ -161,292 +117,301 @@
         },
         {
           "ticker": "KXROASTSUBJECT-30JAN01",
-          "brier": 0.04714841323576457,
+          "brier": 0.047548323056213475,
           "truth": "Kevin Hart"
+        }
+      ]
+    },
+    "Elections": {
+      "n": 3,
+      "mean_brier": 0.9492471857323569,
+      "events": [
+        {
+          "ticker": "KXOHPRIMARY-15D26",
+          "brier": 1.474916364356326,
+          "truth": "Don Leonard"
+        },
+        {
+          "ticker": "KXWVPRIMARY-01D26",
+          "brier": 1.3133815846973986,
+          "truth": "Vince George"
+        },
+        {
+          "ticker": "KXNEXTHUNGARYPM-26MAY01",
+          "brier": 0.05944360814334644,
+          "truth": "P\u00e9ter Magyar"
+        }
+      ]
+    },
+    "Politics": {
+      "n": 3,
+      "mean_brier": 0.08491699459043305,
+      "events": [
+        {
+          "ticker": "KXCOLOMBIASENATE-26",
+          "brier": 0.15543254976775492,
+          "truth": "Government Alliance"
+        },
+        {
+          "ticker": "KXFEDCHAIRCOUNT-27",
+          "brier": 0.07210990407383677,
+          "truth": "54"
+        },
+        {
+          "ticker": "KXVRASCOTUSVOTE-26",
+          "brier": 0.027208529929707456,
+          "truth": "3"
         }
       ]
     }
   },
   "predictions": [
     {
-      "market_ticker": "KXATPCHALLENGERMATCH-26MAY05BAXARC",
-      "category": "Sports",
-      "truth": "Florent Bax",
-      "probabilities": [
-        {
-          "market": "Florent Bax",
-          "probability": 0.747282844826006
-        },
-        {
-          "market": "Adrian Arcon",
-          "probability": 0.252717155173994
-        }
-      ],
-      "brier": 0.1277319210384731,
-      "old_brier": 0.1277319210384731,
-      "kalshi_reason": "base",
-      "platt_reason": "base \u03b1=2.00",
-      "used_for_llm": "sup_high",
-      "ok": true
-    },
-    {
       "market_ticker": "KXATPCHALLENGERMATCH-26MAY05PERLAL",
-      "category": "Sports",
-      "truth": "Younes Lalami Laaroussi",
       "probabilities": [
         {
           "market": "Brandon Perez",
-          "probability": 0.2813661420268888
+          "probability": 0.2806365518445536
         },
         {
           "market": "Younes Lalami Laaroussi",
-          "probability": 0.7186338579731112
+          "probability": 0.7193634481554464
         }
       ],
-      "brier": 0.15833381175819072,
-      "old_brier": 0.035335051825307495,
-      "kalshi_reason": "base",
-      "platt_reason": "FIX_C SKIP (LLM-Kalshi \u0394=0.004, sup=medium)  was 2.000",
-      "used_for_llm": "mean",
-      "ok": true
-    },
-    {
-      "market_ticker": "KXATPCHALLENGERMATCH-26MAY10ROCJOH",
+      "truth": "Younes Lalami Laaroussi",
+      "brier": 0.15751374846240165,
       "category": "Sports",
-      "truth": "Garrett Johns",
-      "probabilities": [
-        {
-          "market": "Francisco Rocha",
-          "probability": 0.3728795509784761
-        },
-        {
-          "market": "Garrett Johns",
-          "probability": 0.627120449021524
-        }
-      ],
-      "brier": 0.2780783190758198,
-      "old_brier": 0.13644573774235683,
-      "kalshi_reason": "base",
-      "platt_reason": "FIX_C SKIP (LLM-Kalshi \u0394=0.011, sup=medium)  was 2.000",
-      "used_for_llm": "mean",
-      "ok": true
-    },
-    {
-      "market_ticker": "KXCOLOMBIASENATE-26",
-      "category": "Politics",
-      "truth": "Government Alliance",
-      "probabilities": [
-        {
-          "market": "Government Alliance",
-          "probability": 0.8875843768242961
-        },
-        {
-          "market": "Opposition",
-          "probability": 0.11241562317570383
-        }
-      ],
-      "brier": 0.025274544667963687,
-      "old_brier": 0.025274544667963687,
-      "kalshi_reason": "base",
-      "platt_reason": "base \u03b1=2.00",
-      "used_for_llm": "mean",
-      "ok": true
-    },
-    {
-      "market_ticker": "KXCOUNTYCHAMPMATCH-26MAY08DURWOR",
-      "category": "Sports",
-      "truth": "Durham",
-      "probabilities": [
-        {
-          "market": "Worcestershire",
-          "probability": 0.15283709597138245
-        },
-        {
-          "market": "Durham",
-          "probability": 0.8471629040286175
-        }
-      ],
-      "brier": 0.04671835580993115,
-      "old_brier": 0.2237035297929452,
-      "kalshi_reason": "FIX_B kalshi_flat (max=0.50) 0.70\u21920.28",
-      "platt_reason": "base \u03b1=2.00",
-      "used_for_llm": "sup_high",
-      "ok": true
-    },
-    {
-      "market_ticker": "KXCOUNTYCHAMPMATCH-26MAY08LEISUS",
-      "category": "Sports",
-      "truth": "Sussex",
-      "probabilities": [
-        {
-          "market": "Sussex",
-          "probability": 0.6498264396808769
-        },
-        {
-          "market": "Leicestershire",
-          "probability": 0.3501735603191231
-        }
-      ],
-      "brier": 0.24524304469314107,
-      "old_brier": 0.38052511907519404,
-      "kalshi_reason": "FIX_B kalshi_flat (max=0.49) 0.70\u21920.28",
-      "platt_reason": "base \u03b1=2.00",
-      "used_for_llm": "mean",
-      "ok": true
-    },
-    {
-      "market_ticker": "KXCOUNTYCHAMPMATCH-26MAY08SOMGLA",
-      "category": "Sports",
-      "truth": "Glamorgan",
-      "probabilities": [
-        {
-          "market": "Glamorgan",
-          "probability": 0.5139966503742693
-        },
-        {
-          "market": "Somerset",
-          "probability": 0.48600334962573055
-        }
-      ],
-      "brier": 0.4723985116948603,
-      "old_brier": 0.47688498451827216,
-      "kalshi_reason": "FIX_B kalshi_flat (max=0.49) 0.70\u21920.28",
-      "platt_reason": "FIX_C SKIP (LLM-Kalshi \u0394=0.035, sup=medium)  was 2.000",
-      "used_for_llm": "mean",
-      "ok": true
-    },
-    {
-      "market_ticker": "KXCRICKETTESTMATCH-26MAY08PAKBAN",
-      "category": "Sports",
-      "truth": "Bangladesh",
-      "probabilities": [
-        {
-          "market": "Bangladesh",
-          "probability": 0.5994797060672956
-        },
-        {
-          "market": "Pakistan",
-          "probability": 0.40052029393270444
-        }
-      ],
-      "brier": 0.3208330117038799,
-      "old_brier": 0.3208330117038799,
-      "kalshi_reason": "base",
-      "platt_reason": "base \u03b1=2.00",
-      "used_for_llm": "mean",
-      "ok": true
-    },
-    {
-      "market_ticker": "KXEREDIVISIEGAME-26MAY10BREHEE",
-      "category": "Sports",
-      "truth": "Breda",
-      "probabilities": [
-        {
-          "market": "Breda",
-          "probability": 0.3464416666666667
-        },
-        {
-          "market": "Heerenveen",
-          "probability": 0.3777066666666667
-        },
-        {
-          "market": "Tie",
-          "probability": 0.27585166666666666
-        }
-      ],
-      "brier": 0.6458949631166666,
-      "old_brier": 0.59572404636998,
-      "kalshi_reason": "FIX_B kalshi_flat (max=0.39) 0.70\u21920.28",
-      "platt_reason": "FIX_C SKIP (LLM-Kalshi \u0394=0.030, sup=medium)  was 2.000",
-      "used_for_llm": "mean",
-      "ok": true
-    },
-    {
-      "market_ticker": "KXFEDCHAIRCOUNT-27",
-      "category": "Politics",
-      "truth": "54",
-      "probabilities": [
-        {
-          "market": "49 or below",
-          "probability": 0.016887796624484915
-        },
-        {
-          "market": "50",
-          "probability": 0.016887796624484915
-        },
-        {
-          "market": "51",
-          "probability": 0.016887796624484915
-        },
-        {
-          "market": "52",
-          "probability": 0.016887796624484915
-        },
-        {
-          "market": "53",
-          "probability": 0.016887796624484915
-        },
-        {
-          "market": "54",
-          "probability": 0.8142342371306659
-        },
-        {
-          "market": "55",
-          "probability": 0.016887796624484915
-        },
-        {
-          "market": "56",
-          "probability": 0.016887796624484915
-        },
-        {
-          "market": "57",
-          "probability": 0.016887796624484915
-        },
-        {
-          "market": "58",
-          "probability": 0.016887796624484915
-        },
-        {
-          "market": "59",
-          "probability": 0.016887796624484915
-        },
-        {
-          "market": "60 or above",
-          "probability": 0.016887796624484915
-        }
-      ],
-      "brier": 0.03764609307755528,
-      "old_brier": 0.05071130721113992,
-      "kalshi_reason": "FIX_B kalshi_flat (max=0.35) 0.50\u21920.20",
-      "platt_reason": "base \u03b1=2.00",
-      "used_for_llm": "sup_high",
-      "ok": true
+      "ok": true,
+      "wall_seconds": 120.8
     },
     {
       "market_ticker": "KXITFWMATCH-26MAY12NAJEBS",
-      "category": "Sports",
-      "truth": "Anna Lena Ebster",
       "probabilities": [
         {
           "market": "Kaja Najzer",
-          "probability": 0.30273165943277397
+          "probability": 0.32590460640719027
         },
         {
           "market": "Anna Lena Ebster",
-          "probability": 0.697268340567226
+          "probability": 0.6740953935928097
         }
       ],
-      "brier": 0.18329291524584213,
-      "old_brier": 0.19697556021142187,
-      "kalshi_reason": "FIX_B kalshi_flat (max=0.47) 0.70\u21920.28",
-      "platt_reason": "base \u03b1=2.00",
-      "used_for_llm": "mean",
-      "ok": true
+      "truth": "Anna Lena Ebster",
+      "brier": 0.21242762495485124,
+      "category": "Sports",
+      "ok": true,
+      "wall_seconds": 140.3
+    },
+    {
+      "market_ticker": "KXATPCHALLENGERMATCH-26MAY05BAXARC",
+      "probabilities": [
+        {
+          "market": "Florent Bax",
+          "probability": 0.7590579811032767
+        },
+        {
+          "market": "Adrian Arcon",
+          "probability": 0.24094201889672315
+        }
+      ],
+      "truth": "Florent Bax",
+      "brier": 0.11610611294005785,
+      "category": "Sports",
+      "ok": true,
+      "wall_seconds": 155.0
+    },
+    {
+      "market_ticker": "KXATPCHALLENGERMATCH-26MAY10ROCJOH",
+      "probabilities": [
+        {
+          "market": "Francisco Rocha",
+          "probability": 0.24608900461242444
+        },
+        {
+          "market": "Garrett Johns",
+          "probability": 0.7539109953875756
+        }
+      ],
+      "truth": "Garrett Johns",
+      "brier": 0.12111959638226771,
+      "category": "Sports",
+      "ok": true,
+      "wall_seconds": 160.2
+    },
+    {
+      "market_ticker": "KXCRICKETTESTMATCH-26MAY08PAKBAN",
+      "probabilities": [
+        {
+          "market": "Bangladesh",
+          "probability": 0.6046974419092012
+        },
+        {
+          "market": "Pakistan",
+          "probability": 0.3953025580907989
+        }
+      ],
+      "truth": "Bangladesh",
+      "brier": 0.31252822486625886,
+      "category": "Sports",
+      "ok": true,
+      "wall_seconds": 151.5
+    },
+    {
+      "market_ticker": "KXCOUNTYCHAMPMATCH-26MAY08LEISUS",
+      "probabilities": [
+        {
+          "market": "Sussex",
+          "probability": 0.8581897902642096
+        },
+        {
+          "market": "Leicestershire",
+          "probability": 0.1418102097357904
+        }
+      ],
+      "truth": "Sussex",
+      "brier": 0.04022027117061772,
+      "category": "Sports",
+      "ok": true,
+      "wall_seconds": 133.9
+    },
+    {
+      "market_ticker": "KXCOUNTYCHAMPMATCH-26MAY08SOMGLA",
+      "probabilities": [
+        {
+          "market": "Glamorgan",
+          "probability": 0.42752736145414433
+        },
+        {
+          "market": "Somerset",
+          "probability": 0.5724726385458557
+        }
+      ],
+      "truth": "Glamorgan",
+      "brier": 0.6554498437673079,
+      "category": "Sports",
+      "ok": true,
+      "wall_seconds": 185.7
+    },
+    {
+      "market_ticker": "KXWTACHALLENGERMATCH-26MAY05WATOKA",
+      "probabilities": [
+        {
+          "market": "Heather Watson",
+          "probability": 0.686962569891214
+        },
+        {
+          "market": "Kyoka Okamura",
+          "probability": 0.31303743010878615
+        }
+      ],
+      "truth": "Heather Watson",
+      "brier": 0.19598486529822629,
+      "category": "Sports",
+      "ok": true,
+      "wall_seconds": 244.0
+    },
+    {
+      "market_ticker": "KXLIGUE1-26",
+      "probabilities": [
+        {
+          "market": "PSG",
+          "probability": 0.7424242424242424
+        },
+        {
+          "market": "Lille",
+          "probability": 0.015151515151515152
+        },
+        {
+          "market": "Monaco",
+          "probability": 0.015151515151515152
+        },
+        {
+          "market": "Lyon",
+          "probability": 0.015151515151515152
+        },
+        {
+          "market": "Strasbourg Alsace",
+          "probability": 0.015151515151515152
+        },
+        {
+          "market": "Stade Rennes",
+          "probability": 0.015151515151515152
+        },
+        {
+          "market": "Marseille",
+          "probability": 0.015151515151515152
+        },
+        {
+          "market": "Lens",
+          "probability": 0.015151515151515152
+        },
+        {
+          "market": "Nice",
+          "probability": 0.015151515151515152
+        },
+        {
+          "market": "Toulouse",
+          "probability": 0.015151515151515152
+        },
+        {
+          "market": "Paris",
+          "probability": 0.015151515151515152
+        },
+        {
+          "market": "Angers",
+          "probability": 0.015151515151515152
+        },
+        {
+          "market": "Le Havre",
+          "probability": 0.015151515151515152
+        },
+        {
+          "market": "Nantes",
+          "probability": 0.015151515151515152
+        },
+        {
+          "market": "Auxerre",
+          "probability": 0.015151515151515152
+        },
+        {
+          "market": "Lorient",
+          "probability": 0.015151515151515152
+        },
+        {
+          "market": "Stade Brest 29",
+          "probability": 0.015151515151515152
+        },
+        {
+          "market": "Metz",
+          "probability": 0.015151515151515152
+        }
+      ],
+      "truth": "PSG",
+      "brier": 0.07024793388429752,
+      "category": "Sports",
+      "ok": true,
+      "wall_seconds": 156.2
+    },
+    {
+      "market_ticker": "KXCOUNTYCHAMPMATCH-26MAY08DURWOR",
+      "probabilities": [
+        {
+          "market": "Worcestershire",
+          "probability": 0.43495806911908974
+        },
+        {
+          "market": "Durham",
+          "probability": 0.5650419308809103
+        }
+      ],
+      "truth": "Durham",
+      "brier": 0.3783770437836137,
+      "category": "Sports",
+      "ok": true,
+      "wall_seconds": 161.6
     },
     {
       "market_ticker": "KXLALIGA-26",
-      "category": "Sports",
-      "truth": "Barcelona",
       "probabilities": [
         {
           "market": "Real Madrid",
@@ -529,17 +494,14 @@
           "probability": 0.014705882352941176
         }
       ],
+      "truth": "Barcelona",
       "brier": 0.08217993079584782,
-      "old_brier": 0.08217993079584782,
-      "kalshi_reason": "base",
-      "platt_reason": "base \u03b1=2.00",
-      "used_for_llm": "sup_high",
-      "ok": true
+      "category": "Sports",
+      "ok": true,
+      "wall_seconds": 164.7
     },
     {
       "market_ticker": "KXLIGAPORTUGAL-26",
-      "category": "Sports",
-      "truth": "FC Porto",
       "probabilities": [
         {
           "market": "SC Braga",
@@ -614,355 +576,36 @@
           "probability": 0.015151515151515152
         }
       ],
+      "truth": "FC Porto",
       "brier": 0.07024793388429752,
-      "old_brier": 0.07024793388429752,
-      "kalshi_reason": "base",
-      "platt_reason": "base \u03b1=2.00",
-      "used_for_llm": "sup_high",
-      "ok": true
-    },
-    {
-      "market_ticker": "KXLIGUE1-26",
       "category": "Sports",
-      "truth": "PSG",
-      "probabilities": [
-        {
-          "market": "PSG",
-          "probability": 0.7424242424242424
-        },
-        {
-          "market": "Lille",
-          "probability": 0.015151515151515152
-        },
-        {
-          "market": "Monaco",
-          "probability": 0.015151515151515152
-        },
-        {
-          "market": "Lyon",
-          "probability": 0.015151515151515152
-        },
-        {
-          "market": "Strasbourg Alsace",
-          "probability": 0.015151515151515152
-        },
-        {
-          "market": "Stade Rennes",
-          "probability": 0.015151515151515152
-        },
-        {
-          "market": "Marseille",
-          "probability": 0.015151515151515152
-        },
-        {
-          "market": "Lens",
-          "probability": 0.015151515151515152
-        },
-        {
-          "market": "Nice",
-          "probability": 0.015151515151515152
-        },
-        {
-          "market": "Toulouse",
-          "probability": 0.015151515151515152
-        },
-        {
-          "market": "Paris",
-          "probability": 0.015151515151515152
-        },
-        {
-          "market": "Angers",
-          "probability": 0.015151515151515152
-        },
-        {
-          "market": "Le Havre",
-          "probability": 0.015151515151515152
-        },
-        {
-          "market": "Nantes",
-          "probability": 0.015151515151515152
-        },
-        {
-          "market": "Auxerre",
-          "probability": 0.015151515151515152
-        },
-        {
-          "market": "Lorient",
-          "probability": 0.015151515151515152
-        },
-        {
-          "market": "Stade Brest 29",
-          "probability": 0.015151515151515152
-        },
-        {
-          "market": "Metz",
-          "probability": 0.015151515151515152
-        }
-      ],
-      "brier": 0.07024793388429752,
-      "old_brier": 0.07024793388429752,
-      "kalshi_reason": "base",
-      "platt_reason": "base \u03b1=2.00",
-      "used_for_llm": "sup_high",
-      "ok": true
+      "ok": true,
+      "wall_seconds": 252.4
     },
     {
-      "market_ticker": "KXNBASERIES-26LALOKCR2",
+      "market_ticker": "KXEREDIVISIEGAME-26MAY10BREHEE",
+      "probabilities": [
+        {
+          "market": "Breda",
+          "probability": 0.303054183240938
+        },
+        {
+          "market": "Heerenveen",
+          "probability": 0.45136110544924557
+        },
+        {
+          "market": "Tie",
+          "probability": 0.24558471130981638
+        }
+      ],
+      "truth": "Breda",
+      "brier": 0.7497721694394468,
       "category": "Sports",
-      "truth": "Oklahoma City",
-      "probabilities": [
-        {
-          "market": "Oklahoma City",
-          "probability": 0.7768999999999999
-        },
-        {
-          "market": "Los Angeles L",
-          "probability": 0.22309999999999994
-        }
-      ],
-      "brier": 0.09954722,
-      "old_brier": 0.01160753980862328,
-      "kalshi_reason": "base",
-      "platt_reason": "FIX_C SKIP (LLM-Kalshi \u0394=0.020, sup=medium)  was 2.000",
-      "used_for_llm": "mean",
-      "ok": true
-    },
-    {
-      "market_ticker": "KXNEXTHUNGARYPM-26MAY01",
-      "category": "Elections",
-      "truth": "P\u00e9ter Magyar",
-      "probabilities": [
-        {
-          "market": "P\u00e9ter Magyar",
-          "probability": 0.6518048561599441
-        },
-        {
-          "market": "Viktor Orb\u00e1n",
-          "probability": 0.34819514384005584
-        }
-      ],
-      "brier": 0.2424797163875944,
-      "old_brier": 0.09858101745232199,
-      "kalshi_reason": "base",
-      "platt_reason": "FIX_C SKIP (LLM-Kalshi \u0394=0.002, sup=medium)  was 2.000",
-      "used_for_llm": "mean",
-      "ok": true
-    },
-    {
-      "market_ticker": "KXNHLCALDER-26",
-      "category": "Sports",
-      "truth": "Matthew Schaefer",
-      "probabilities": [
-        {
-          "market": "Ivan Demidov",
-          "probability": 0.012831263870095295
-        },
-        {
-          "market": "Matthew Schaefer",
-          "probability": 0.6278933477672365
-        },
-        {
-          "market": "Michael Misa",
-          "probability": 0.012831263870095295
-        },
-        {
-          "market": "Zeev Buium",
-          "probability": 0.012831263870095295
-        },
-        {
-          "market": "Isaac Howard",
-          "probability": 0.012831263870095295
-        },
-        {
-          "market": "Jimmy Snuggerud",
-          "probability": 0.012831263870095295
-        },
-        {
-          "market": "Alexander Nikishin",
-          "probability": 0.012831263870095295
-        },
-        {
-          "market": "Zayne Parekh",
-          "probability": 0.012831263870095295
-        },
-        {
-          "market": "Maxim Shabanov",
-          "probability": 0.012831263870095295
-        },
-        {
-          "market": "Ryan Leonard",
-          "probability": 0.012831263870095295
-        },
-        {
-          "market": "Yaroslav Askarov",
-          "probability": 0.012831263870095295
-        },
-        {
-          "market": "Gabe Perreault",
-          "probability": 0.012831263870095295
-        },
-        {
-          "market": "Matthew Savoie",
-          "probability": 0.012831263870095295
-        },
-        {
-          "market": "Axel Sandin-Pellikka",
-          "probability": 0.012831263870095295
-        },
-        {
-          "market": "Bradly Nadeau",
-          "probability": 0.012831263870095295
-        },
-        {
-          "market": "Jesper Wallstedt",
-          "probability": 0.012831263870095295
-        },
-        {
-          "market": "Rutger McGroarty",
-          "probability": 0.012831263870095295
-        },
-        {
-          "market": "Sam Dickinson",
-          "probability": 0.012831263870095295
-        },
-        {
-          "market": "Sam Rinzel",
-          "probability": 0.012831263870095295
-        },
-        {
-          "market": "Ville Koivunen",
-          "probability": 0.012831263870095295
-        },
-        {
-          "market": "Artyom Levshunov",
-          "probability": 0.012831263870095295
-        },
-        {
-          "market": "Easton Cowan",
-          "probability": 0.012831263870095295
-        },
-        {
-          "market": "Arseni Gritsyuk",
-          "probability": 0.012831263870095295
-        },
-        {
-          "market": "Beckett Sennecke",
-          "probability": 0.012831263870095295
-        },
-        {
-          "market": "Calum Ritchie",
-          "probability": 0.012831263870095295
-        },
-        {
-          "market": "Jonathan Lekkerimaki",
-          "probability": 0.012831263870095295
-        },
-        {
-          "market": "Berkly Catton",
-          "probability": 0.012831263870095295
-        },
-        {
-          "market": "Danila Yurov",
-          "probability": 0.012831263870095295
-        },
-        {
-          "market": "Leevi Merilaninen",
-          "probability": 0.012831263870095295
-        },
-        {
-          "market": "Alex Bump",
-          "probability": 0.012831263870095295
-        }
-      ],
-      "brier": 0.14323795927849117,
-      "old_brier": 0.14323795927849117,
-      "kalshi_reason": "base",
-      "platt_reason": "base \u03b1=2.00",
-      "used_for_llm": "sup_high",
-      "ok": true
-    },
-    {
-      "market_ticker": "KXOHPRIMARY-15D26",
-      "category": "Elections",
-      "truth": "Don Leonard",
-      "probabilities": [
-        {
-          "market": "Don Leonard",
-          "probability": 0.1355002678529549
-        },
-        {
-          "market": "Adam Miller",
-          "probability": 0.864499732147045
-        }
-      ],
-      "brier": 1.4947195737646253,
-      "old_brier": 1.9052384712092734,
-      "kalshi_reason": "base",
-      "platt_reason": "FIX_C SKIP (LLM-Kalshi \u0394=0.013, sup=medium)  was 2.000",
-      "used_for_llm": "mean",
-      "ok": true
-    },
-    {
-      "market_ticker": "KXROASTSUBJECT-30JAN01",
-      "category": "Entertainment",
-      "truth": "Kevin Hart",
-      "probabilities": [
-        {
-          "market": "Kevin Hart",
-          "probability": 0.7929681332482966
-        },
-        {
-          "market": "Elon Musk",
-          "probability": 0.020703186675170338
-        },
-        {
-          "market": "Taylor Swift",
-          "probability": 0.020703186675170338
-        },
-        {
-          "market": "Drake",
-          "probability": 0.020703186675170338
-        },
-        {
-          "market": "Joe Rogan",
-          "probability": 0.020703186675170338
-        },
-        {
-          "market": "Logan Paul",
-          "probability": 0.020703186675170338
-        },
-        {
-          "market": "MrBeast",
-          "probability": 0.020703186675170338
-        },
-        {
-          "market": "Theo Von",
-          "probability": 0.020703186675170338
-        },
-        {
-          "market": "Shane Gillis",
-          "probability": 0.020703186675170338
-        },
-        {
-          "market": "Andrew Schulz",
-          "probability": 0.020703186675170338
-        },
-        {
-          "market": "Jake Paul",
-          "probability": 0.020703186675170338
-        }
-      ],
-      "brier": 0.04714841323576457,
-      "old_brier": 0.26184491955573413,
-      "kalshi_reason": "FIX_B kalshi_flat (max=0.49) 0.35\u21920.14",
-      "platt_reason": "base \u03b1=2.00",
-      "used_for_llm": "sup_high",
-      "ok": true
+      "ok": true,
+      "wall_seconds": 170.0
     },
     {
       "market_ticker": "KXSERIEA-26",
-      "category": "Sports",
-      "truth": "Inter",
       "probabilities": [
         {
           "market": "Napoli",
@@ -1045,86 +688,372 @@
           "probability": 0.014705882352941176
         }
       ],
+      "truth": "Inter",
       "brier": 0.08217993079584782,
-      "old_brier": 0.08217993079584782,
-      "kalshi_reason": "base",
-      "platt_reason": "base \u03b1=2.00",
-      "used_for_llm": "sup_high",
-      "ok": true
+      "category": "Sports",
+      "ok": true,
+      "wall_seconds": 182.7
+    },
+    {
+      "market_ticker": "KXNBASERIES-26LALOKCR2",
+      "probabilities": [
+        {
+          "market": "Oklahoma City",
+          "probability": 0.772146875
+        },
+        {
+          "market": "Los Angeles L",
+          "probability": 0.227853125
+        }
+      ],
+      "truth": "Oklahoma City",
+      "brier": 0.10383409314453124,
+      "category": "Sports",
+      "ok": true,
+      "wall_seconds": 136.0
+    },
+    {
+      "market_ticker": "KXROASTSUBJECT-30JAN01",
+      "probabilities": [
+        {
+          "market": "Kevin Hart",
+          "probability": 0.7920919716968069
+        },
+        {
+          "market": "Elon Musk",
+          "probability": 0.020790802830319297
+        },
+        {
+          "market": "Taylor Swift",
+          "probability": 0.020790802830319297
+        },
+        {
+          "market": "Drake",
+          "probability": 0.020790802830319297
+        },
+        {
+          "market": "Joe Rogan",
+          "probability": 0.020790802830319297
+        },
+        {
+          "market": "Logan Paul",
+          "probability": 0.020790802830319297
+        },
+        {
+          "market": "MrBeast",
+          "probability": 0.020790802830319297
+        },
+        {
+          "market": "Theo Von",
+          "probability": 0.020790802830319297
+        },
+        {
+          "market": "Shane Gillis",
+          "probability": 0.020790802830319297
+        },
+        {
+          "market": "Andrew Schulz",
+          "probability": 0.020790802830319297
+        },
+        {
+          "market": "Jake Paul",
+          "probability": 0.020790802830319297
+        }
+      ],
+      "truth": "Kevin Hart",
+      "brier": 0.047548323056213475,
+      "category": "Entertainment",
+      "ok": true,
+      "wall_seconds": 134.0
+    },
+    {
+      "market_ticker": "KXNHLCALDER-26",
+      "probabilities": [
+        {
+          "market": "Ivan Demidov",
+          "probability": 0.012867404123818316
+        },
+        {
+          "market": "Matthew Schaefer",
+          "probability": 0.6268452804092689
+        },
+        {
+          "market": "Michael Misa",
+          "probability": 0.012867404123818316
+        },
+        {
+          "market": "Zeev Buium",
+          "probability": 0.012867404123818316
+        },
+        {
+          "market": "Isaac Howard",
+          "probability": 0.012867404123818316
+        },
+        {
+          "market": "Jimmy Snuggerud",
+          "probability": 0.012867404123818316
+        },
+        {
+          "market": "Alexander Nikishin",
+          "probability": 0.012867404123818316
+        },
+        {
+          "market": "Zayne Parekh",
+          "probability": 0.012867404123818316
+        },
+        {
+          "market": "Maxim Shabanov",
+          "probability": 0.012867404123818316
+        },
+        {
+          "market": "Ryan Leonard",
+          "probability": 0.012867404123818316
+        },
+        {
+          "market": "Yaroslav Askarov",
+          "probability": 0.012867404123818316
+        },
+        {
+          "market": "Gabe Perreault",
+          "probability": 0.012867404123818316
+        },
+        {
+          "market": "Matthew Savoie",
+          "probability": 0.012867404123818316
+        },
+        {
+          "market": "Axel Sandin-Pellikka",
+          "probability": 0.012867404123818316
+        },
+        {
+          "market": "Bradly Nadeau",
+          "probability": 0.012867404123818316
+        },
+        {
+          "market": "Jesper Wallstedt",
+          "probability": 0.012867404123818316
+        },
+        {
+          "market": "Rutger McGroarty",
+          "probability": 0.012867404123818316
+        },
+        {
+          "market": "Sam Dickinson",
+          "probability": 0.012867404123818316
+        },
+        {
+          "market": "Sam Rinzel",
+          "probability": 0.012867404123818316
+        },
+        {
+          "market": "Ville Koivunen",
+          "probability": 0.012867404123818316
+        },
+        {
+          "market": "Artyom Levshunov",
+          "probability": 0.012867404123818316
+        },
+        {
+          "market": "Easton Cowan",
+          "probability": 0.012867404123818316
+        },
+        {
+          "market": "Arseni Gritsyuk",
+          "probability": 0.012867404123818316
+        },
+        {
+          "market": "Beckett Sennecke",
+          "probability": 0.012867404123818316
+        },
+        {
+          "market": "Calum Ritchie",
+          "probability": 0.012867404123818316
+        },
+        {
+          "market": "Jonathan Lekkerimaki",
+          "probability": 0.012867404123818316
+        },
+        {
+          "market": "Berkly Catton",
+          "probability": 0.012867404123818316
+        },
+        {
+          "market": "Danila Yurov",
+          "probability": 0.012867404123818316
+        },
+        {
+          "market": "Leevi Merilaninen",
+          "probability": 0.012867404123818316
+        },
+        {
+          "market": "Alex Bump",
+          "probability": 0.012867404123818316
+        }
+      ],
+      "truth": "Matthew Schaefer",
+      "brier": 0.14404597733052119,
+      "category": "Sports",
+      "ok": true,
+      "wall_seconds": 168.0
     },
     {
       "market_ticker": "KXSURVIVORELIMINATION-26APR11",
-      "category": "Entertainment",
-      "truth": "Dee Valladares",
       "probabilities": [
         {
           "market": "Rizo Velovic",
-          "probability": 0.017354935473000623
+          "probability": 0.016570895900724882
         },
         {
           "market": "Aubry Bracco",
-          "probability": 0.017354935473000623
+          "probability": 0.016570895900724882
         },
         {
           "market": "Ozzy Lusth",
-          "probability": 0.017354935473000623
+          "probability": 0.016570895900724882
         },
         {
           "market": "Chrissy Hofbeck",
-          "probability": 0.017354935473000623
+          "probability": 0.016570895900724882
         },
         {
           "market": "Christian Hubicki",
-          "probability": 0.5809694885106476
+          "probability": 0.18607766932457462
         },
         {
           "market": "Cirie Fields",
-          "probability": 0.017354935473000623
+          "probability": 0.016570895900724882
         },
         {
           "market": "Benjamin \u201cCoach\u201d Wade",
-          "probability": 0.017354935473000623
+          "probability": 0.016570895900724882
         },
         {
           "market": "Rick Devens",
-          "probability": 0.017354935473000623
+          "probability": 0.016570895900724882
         },
         {
           "market": "Dee Valladares",
-          "probability": 0.21077128581334492
+          "probability": 0.6150715798667269
         },
         {
           "market": "Emily Flippen",
-          "probability": 0.017354935473000623
+          "probability": 0.016570895900724882
         },
         {
           "market": "Tiffany Nicole Ervin",
-          "probability": 0.017354935473000623
+          "probability": 0.016570895900724882
         },
         {
           "market": "Stephenie LaGrossa Kendrick",
-          "probability": 0.017354935473000623
+          "probability": 0.016570895900724882
         },
         {
           "market": "Joe Hunter",
-          "probability": 0.017354935473000623
+          "probability": 0.016570895900724882
         },
         {
           "market": "Jonathan Young",
-          "probability": 0.017354935473000623
+          "probability": 0.016570895900724882
         }
       ],
-      "brier": 0.9640218353003085,
-      "old_brier": 0.9640218353003085,
-      "kalshi_reason": "base",
-      "platt_reason": "base \u03b1=2.00",
-      "used_for_llm": "mean",
-      "ok": true
+      "truth": "Dee Valladares",
+      "brier": 0.1860899227389953,
+      "category": "Entertainment",
+      "ok": true,
+      "wall_seconds": 189.9
+    },
+    {
+      "market_ticker": "KXTOURNAMENTOFCHAMPIONS-26DEC31",
+      "probabilities": [
+        {
+          "market": "Adam Greenberg",
+          "probability": 0.014705882352941176
+        },
+        {
+          "market": "Adam Sobel",
+          "probability": 0.014705882352941176
+        },
+        {
+          "market": "Britt Rescigno",
+          "probability": 0.014705882352941176
+        },
+        {
+          "market": "Bryan Voltaggio",
+          "probability": 0.7205882352941175
+        },
+        {
+          "market": "Carlos Anthony",
+          "probability": 0.014705882352941176
+        },
+        {
+          "market": "Claudette Zepeda",
+          "probability": 0.014705882352941176
+        },
+        {
+          "market": "Dale Talde",
+          "probability": 0.014705882352941176
+        },
+        {
+          "market": "David Viana",
+          "probability": 0.014705882352941176
+        },
+        {
+          "market": "Jet Tila",
+          "probability": 0.014705882352941176
+        },
+        {
+          "market": "Joe Sasto",
+          "probability": 0.014705882352941176
+        },
+        {
+          "market": "Jonathon Sawyer",
+          "probability": 0.014705882352941176
+        },
+        {
+          "market": "Kaleena Bliss",
+          "probability": 0.014705882352941176
+        },
+        {
+          "market": "Karen Akunowicz",
+          "probability": 0.014705882352941176
+        },
+        {
+          "market": "Kevin Lee",
+          "probability": 0.014705882352941176
+        },
+        {
+          "market": "Lee Anne Wong",
+          "probability": 0.014705882352941176
+        },
+        {
+          "market": "Marcel Vigneron",
+          "probability": 0.014705882352941176
+        },
+        {
+          "market": "Nini Nguyen",
+          "probability": 0.014705882352941176
+        },
+        {
+          "market": "Sara Bradley",
+          "probability": 0.014705882352941176
+        },
+        {
+          "market": "Shirley Chung",
+          "probability": 0.014705882352941176
+        },
+        {
+          "market": "Tobias Dorzon",
+          "probability": 0.014705882352941176
+        }
+      ],
+      "truth": "Bryan Voltaggio",
+      "brier": 0.08217993079584782,
+      "category": "Entertainment",
+      "ok": true,
+      "wall_seconds": 204.4
     },
     {
       "market_ticker": "KXTHEMASKEDSINGER-27JAN01",
-      "category": "Entertainment",
-      "truth": "Galaxy Girl",
       "probabilities": [
         {
           "market": "14 Karat Carrot",
@@ -1199,200 +1128,191 @@
           "probability": 0.015151515151515152
         }
       ],
+      "truth": "Galaxy Girl",
       "brier": 0.07024793388429752,
-      "old_brier": 0.07024793388429752,
-      "kalshi_reason": "base",
-      "platt_reason": "base \u03b1=2.00",
-      "used_for_llm": "sup_high",
-      "ok": true
-    },
-    {
-      "market_ticker": "KXTOURNAMENTOFCHAMPIONS-26DEC31",
       "category": "Entertainment",
-      "truth": "Bryan Voltaggio",
-      "probabilities": [
-        {
-          "market": "Adam Greenberg",
-          "probability": 0.014788064160638817
-        },
-        {
-          "market": "Adam Sobel",
-          "probability": 0.014788064160638817
-        },
-        {
-          "market": "Britt Rescigno",
-          "probability": 0.014788064160638817
-        },
-        {
-          "market": "Bryan Voltaggio",
-          "probability": 0.7190267809478624
-        },
-        {
-          "market": "Carlos Anthony",
-          "probability": 0.014788064160638817
-        },
-        {
-          "market": "Claudette Zepeda",
-          "probability": 0.014788064160638817
-        },
-        {
-          "market": "Dale Talde",
-          "probability": 0.014788064160638817
-        },
-        {
-          "market": "David Viana",
-          "probability": 0.014788064160638817
-        },
-        {
-          "market": "Jet Tila",
-          "probability": 0.014788064160638817
-        },
-        {
-          "market": "Joe Sasto",
-          "probability": 0.014788064160638817
-        },
-        {
-          "market": "Jonathon Sawyer",
-          "probability": 0.014788064160638817
-        },
-        {
-          "market": "Kaleena Bliss",
-          "probability": 0.014788064160638817
-        },
-        {
-          "market": "Karen Akunowicz",
-          "probability": 0.014788064160638817
-        },
-        {
-          "market": "Kevin Lee",
-          "probability": 0.014788064160638817
-        },
-        {
-          "market": "Lee Anne Wong",
-          "probability": 0.014788064160638817
-        },
-        {
-          "market": "Marcel Vigneron",
-          "probability": 0.014788064160638817
-        },
-        {
-          "market": "Nini Nguyen",
-          "probability": 0.014788064160638817
-        },
-        {
-          "market": "Sara Bradley",
-          "probability": 0.014788064160638817
-        },
-        {
-          "market": "Shirley Chung",
-          "probability": 0.014788064160638817
-        },
-        {
-          "market": "Tobias Dorzon",
-          "probability": 0.014788064160638817
-        }
-      ],
-      "brier": 0.08310099981528471,
-      "old_brier": 0.08310099981528471,
-      "kalshi_reason": "base",
-      "platt_reason": "base \u03b1=2.00",
-      "used_for_llm": "sup_high",
-      "ok": true
-    },
-    {
-      "market_ticker": "KXVRASCOTUSVOTE-26",
-      "category": "Politics",
-      "truth": "3",
-      "probabilities": [
-        {
-          "market": "0",
-          "probability": 0.01829032839761545
-        },
-        {
-          "market": "1",
-          "probability": 0.01829032839761545
-        },
-        {
-          "market": "2",
-          "probability": 0.01829032839761545
-        },
-        {
-          "market": "3",
-          "probability": 0.7380945507824255
-        },
-        {
-          "market": "4",
-          "probability": 0.04760810912990953
-        },
-        {
-          "market": "5",
-          "probability": 0.043281574444156826
-        },
-        {
-          "market": "6",
-          "probability": 0.06127379525781544
-        },
-        {
-          "market": "7",
-          "probability": 0.01829032839761545
-        },
-        {
-          "market": "8",
-          "probability": 0.01829032839761545
-        },
-        {
-          "market": "9",
-          "probability": 0.01829032839761545
-        }
-      ],
-      "brier": 0.07849598573380237,
-      "old_brier": 0.073906429381858,
-      "kalshi_reason": "FIX_B kalshi_flat (max=0.54) 0.50\u21920.20",
-      "platt_reason": "base \u03b1=2.00",
-      "used_for_llm": "mean",
-      "ok": true
-    },
-    {
-      "market_ticker": "KXWTACHALLENGERMATCH-26MAY05WATOKA",
-      "category": "Sports",
-      "truth": "Heather Watson",
-      "probabilities": [
-        {
-          "market": "Heather Watson",
-          "probability": 0.6844021113785925
-        },
-        {
-          "market": "Kyoka Okamura",
-          "probability": 0.3155978886214075
-        }
-      ],
-      "brier": 0.19920405460458063,
-      "old_brier": 0.19920405460458063,
-      "kalshi_reason": "base",
-      "platt_reason": "base \u03b1=2.00",
-      "used_for_llm": "mean",
-      "ok": true
+      "ok": true,
+      "wall_seconds": 125.8
     },
     {
       "market_ticker": "KXWVPRIMARY-01D26",
-      "category": "Elections",
-      "truth": "Vince George",
       "probabilities": [
         {
           "market": "Brit Aguirre",
-          "probability": 0.7945
+          "probability": 0.8103646045754339
         },
         {
           "market": "Vince George",
-          "probability": 0.20549999999999996
+          "probability": 0.18963539542456612
         }
       ],
-      "brier": 1.2624605,
-      "old_brier": 1.7570387716818219,
-      "kalshi_reason": "base",
-      "platt_reason": "FIX_C SKIP (LLM-Kalshi \u0394=0.000, sup=medium)  was 2.000",
-      "used_for_llm": "mean",
-      "ok": true
+      "truth": "Vince George",
+      "brier": 1.3133815846973986,
+      "category": "Elections",
+      "ok": true,
+      "wall_seconds": 174.3
+    },
+    {
+      "market_ticker": "KXOHPRIMARY-15D26",
+      "probabilities": [
+        {
+          "market": "Don Leonard",
+          "probability": 0.1412461457564439
+        },
+        {
+          "market": "Adam Miller",
+          "probability": 0.8587538542435562
+        }
+      ],
+      "truth": "Don Leonard",
+      "brier": 1.474916364356326,
+      "category": "Elections",
+      "ok": true,
+      "wall_seconds": 145.5
+    },
+    {
+      "market_ticker": "KXNEXTHUNGARYPM-26MAY01",
+      "probabilities": [
+        {
+          "market": "P\u00e9ter Magyar",
+          "probability": 0.8275998721819696
+        },
+        {
+          "market": "Viktor Orb\u00e1n",
+          "probability": 0.17240012781803044
+        }
+      ],
+      "truth": "P\u00e9ter Magyar",
+      "brier": 0.05944360814334644,
+      "category": "Elections",
+      "ok": true,
+      "wall_seconds": 195.4
+    },
+    {
+      "market_ticker": "KXCOLOMBIASENATE-26",
+      "probabilities": [
+        {
+          "market": "Government Alliance",
+          "probability": 0.7212236113228427
+        },
+        {
+          "market": "Opposition",
+          "probability": 0.27877638867715726
+        }
+      ],
+      "truth": "Government Alliance",
+      "brier": 0.15543254976775492,
+      "category": "Politics",
+      "ok": true,
+      "wall_seconds": 210.9
+    },
+    {
+      "market_ticker": "KXFEDCHAIRCOUNT-27",
+      "probabilities": [
+        {
+          "market": "49 or below",
+          "probability": 0.01753810058372487
+        },
+        {
+          "market": "50",
+          "probability": 0.01753810058372487
+        },
+        {
+          "market": "51",
+          "probability": 0.01753810058372487
+        },
+        {
+          "market": "52",
+          "probability": 0.01753810058372487
+        },
+        {
+          "market": "53",
+          "probability": 0.06249343124714683
+        },
+        {
+          "market": "54",
+          "probability": 0.746370757264697
+        },
+        {
+          "market": "55",
+          "probability": 0.033292906234632325
+        },
+        {
+          "market": "56",
+          "probability": 0.01753810058372487
+        },
+        {
+          "market": "57",
+          "probability": 0.01753810058372487
+        },
+        {
+          "market": "58",
+          "probability": 0.01753810058372487
+        },
+        {
+          "market": "59",
+          "probability": 0.01753810058372487
+        },
+        {
+          "market": "60 or above",
+          "probability": 0.01753810058372487
+        }
+      ],
+      "truth": "54",
+      "brier": 0.07210990407383677,
+      "category": "Politics",
+      "ok": true,
+      "wall_seconds": 278.8
+    },
+    {
+      "market_ticker": "KXVRASCOTUSVOTE-26",
+      "probabilities": [
+        {
+          "market": "0",
+          "probability": 0.017387265432464407
+        },
+        {
+          "market": "1",
+          "probability": 0.017387265432464407
+        },
+        {
+          "market": "2",
+          "probability": 0.017387265432464407
+        },
+        {
+          "market": "3",
+          "probability": 0.8435146111078203
+        },
+        {
+          "market": "4",
+          "probability": 0.017387265432464407
+        },
+        {
+          "market": "5",
+          "probability": 0.017387265432464407
+        },
+        {
+          "market": "6",
+          "probability": 0.017387265432464407
+        },
+        {
+          "market": "7",
+          "probability": 0.017387265432464407
+        },
+        {
+          "market": "8",
+          "probability": 0.017387265432464407
+        },
+        {
+          "market": "9",
+          "probability": 0.017387265432464407
+        }
+      ],
+      "truth": "3",
+      "brier": 0.027208529929707456,
+      "category": "Politics",
+      "ok": true,
+      "wall_seconds": 311.5
     }
   ]
 }
