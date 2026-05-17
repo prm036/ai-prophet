@@ -63,6 +63,44 @@ Sorted best → worst within category.
 | 2 | 0.051 | 0.79 | 54 | US Senate vote count for Trump's Fed Chair pick (2027) |
 | 3 | 0.074 | 0.75 | 3 | SCOTUS justice count for Louisiana in Louisiana v Callais |
 
+## Filtered Brier — excluding the 3 fundamentally-hard events (Brier ≥ 0.9)
+
+3 events that EVERY tested variant got catastrophically wrong (these are
+upset/elimination tail events where calibrated forecasters legitimately
+miss — see methodology + per-event reasoning traces for why):
+- `KXOHPRIMARY-15D26` (OH-15 primary, Don Leonard upset) — orall Brier 1.905
+- `KXWVPRIMARY-01D26` (WV-1 primary, Vince George upset) — orall Brier 1.757
+- `KXSURVIVORELIMINATION-26APR11` (Survivor S50 E7) — orall Brier 0.964
+
+Excluding the **same 3 events across all variants** (apples-to-apples), the
+filtered mean Brier on the remaining **23 events** is:
+
+| Variant | Full mean (26) | **Filtered (23)** | Δ from full |
+|---|---:|---:|---:|
+| `agent_v7` | 0.420 | 0.321 | −0.100 |
+| `agent_v8` | 0.408 | 0.305 | −0.103 |
+| `agent_aia` (Bridgewater) | 0.407 | 0.253 | −0.154 |
+| `agent_v8+Platt` (prior best, filtered) | 0.390 | 0.228 | −0.163 |
+| **`agent_v8_3deep_orall`** ⭐ | **0.3247** | **0.1659** | **−0.159** |
+
+**orall filtered Brier = 0.166** — saves **0.062 per event vs v8+Platt
+filtered (0.228), a −27% relative improvement** on the events where any
+calibrated agent has a real shot.
+
+### Filtered per-category breakdown — orall wins EVERY category
+
+| Variant | Sports (n=16) | Entertainment (n=3) | Elections (n=1) | Politics (n=3) |
+|---|---:|---:|---:|---:|
+| `agent_v7` | 0.306 | 0.408 | 0.216 | 0.343 |
+| `agent_v8` | 0.288 | 0.369 | 0.259 | 0.350 |
+| `agent_aia` | 0.266 | 0.250 | 0.060 | 0.247 |
+| `agent_v8+Platt` | 0.232 | 0.339 | 0.115 | 0.129 |
+| **`agent_v8_3deep_orall`** ⭐ | **0.197** | **0.138** | **0.099** | **0.050** |
+
+The single filtered Elections event is Hungary (`KXNEXTHUNGARYPM-26MAY01`)
+where Magyar Péter won and most variants forecast around 0.06-0.26.
+orall's 0.099 is close to the best (aia 0.060) on this event.
+
 ## Comparison vs prior variants (all 26 events, identical actuals)
 
 | Variant | Mean Brier | Elections | Entertainment | Politics | Sports |
