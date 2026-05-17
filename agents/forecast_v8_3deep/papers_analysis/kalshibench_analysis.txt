@@ -1,0 +1,333 @@
+================================================================================
+KALSHIBENCH — Paper Analysis + Prophet Arena Forecast Track Translation
+================================================================================
+Source: arXiv 2512.16030 — "Do Large Language Models Know What They Don't
+Know? Evaluating Epistemic Calibration via Prediction Markets" (Lukas Nel,
+Lotus AI, NeurIPS 2024 format)
+Local extract: /workspace/context/kalshi_extracted/kalshibench.tex
+================================================================================
+
+
+PART 1 — PAPER SUMMARY
+================================================================================
+
+1.1 Key findings (headline)
+---------------------------
+This is the closest paper to Prophet Arena's data distribution: it evaluates
+LLM CALIBRATION on real Kalshi binary markets. The dataset is literally
+Kalshi questions.
+
+Top-line result: ALL five evaluated frontier LLMs are SYSTEMATICALLY
+OVERCONFIDENT on Kalshi binary forecasts. Accuracy band is narrow (64-69%);
+calibration error spans 3× (ECE 0.120 – 0.395). Only Claude Opus 4.5 beats
+the climatology base-rate baseline (BSS = +0.057). Every other tested model
+has NEGATIVE Brier Skill Score — i.e., worse than just predicting the 40%
+base rate.
+
+Most damning finding: REASONING MAKES CALIBRATION WORSE.
+GPT-5.2-XHigh uses 26× more reasoning tokens than Claude, achieves similar
+accuracy (65.3% vs 69.3%), but has the WORST ECE (0.395) and the WORST
+Brier (0.433 — worse than constant 0.40 base-rate prediction).
+
+Headline table:
+   Model                   Acc    F1     Brier↓  BSS↑    ECE↓   MCE↓
+   Claude Opus 4.5         69.3%  0.676  0.227   +0.057  0.120  0.246  ← only positive BSS
+   Kimi-K2                 67.1%  0.633  0.347   −0.446  0.298  0.570
+   Qwen3-235B-Thinking     65.7%  0.607  0.346   −0.437  0.297  0.479
+   GPT-5.2-XHigh           65.3%  0.599  0.433   −0.799  0.395  0.622
+   DeepSeek-V3.2           64.3%  0.614  0.339   −0.407  0.284  0.630
+
+   Reference: superforecasters Brier ~0.15-0.20, ECE ~0.03-0.05
+              market crowd Brier ~0.12-0.18
+
+1.2 The benchmark
+-----------------
+KalshiBench: 300 binary Kalshi prediction-market questions, seed=42 from a
+1,531-question full dataset. Temporally filtered to events resolving AFTER
+all evaluated models' knowledge cutoffs (latest cutoff = October 2025).
+46-day resolution window (very narrow), so news recency is paramount.
+
+13 categories present (out of 16 in full set):
+   Sports (83 questions, 27.7%, yes-rate 34.9%)
+   Politics (55, 18.3%, 52.7%)
+   Entertainment (47, 15.7%, 36.2%)
+   Companies (30, 10.0%, 60.0%)
+   Elections (24, 8.0%, 20.8%)
+   Mentions (19, 6.3%, 36.8%)
+   Crypto (11, 3.7%, 27.3%)
+   Climate/Weather (9, 3.0%, 33.3%)
+   Financials (8, 2.7%, 12.5%)
+   World (6), Economics (4), Social (3), Sci/Tech (1)
+
+KEY INSIGHT: yes-rates vary enormously per category (Financials 12.5%,
+Companies 60.0%). A uniform 50/50 prior is OBJECTIVELY WORSE than per-category
+priors.
+
+Dedup rule: max 2 questions per series_ticker (preserves diversity).
+Binary only (no multi-outcome, no scalar markets).
+Quality filter: removed ambiguous resolution criteria.
+
+1.3 Models evaluated
+--------------------
+   Claude Opus 4.5 (Anthropic, cutoff April 2025) — flagship
+   GPT-5.2-XHigh (OpenAI, October 2025) — extended reasoning
+   DeepSeek-V3.2 (October 2025) — open-weight
+   Qwen3-235B-Thinking (June 2025) — reasoning-enhanced
+   Kimi-K2 (June 2025) — reasoning-enhanced
+
+NO SCAFFOLDING: single-turn prompt, no retrieval, no tools, no ensembling.
+This is a "raw model capability" benchmark, NOT a system benchmark.
+
+System prompt EXPLICITLY says "Be calibrated: if you're 70% confident, you
+should be correct about 70% of the time on similar questions." The fact
+that models still fail badly means CALIBRATION CANNOT BE PROMPTED INTO THE
+MODEL — it has to be applied post-hoc.
+
+Temperature 0.7 standard, 1.0 for GPT-5.2-XHigh (per OpenAI XHigh recommendation).
+
+1.4 The 90-100% bin disaster (most actionable single finding)
+-------------------------------------------------------------
+When LLMs claim 90%+ confidence in their answer, are they right ≥95% of
+the time? NO. In the 90-100% confidence bin:
+
+   Model                Avg Conf  Actual Acc  Gap     N in bin
+   Claude Opus 4.5      94.6%     70.0%       +24.6%  20
+   DeepSeek-V3.2        93.7%     30.8%       +62.9%  39
+   GPT-5.2-XHigh        95.9%     33.7%       +62.2%  104  ← 35% of all preds here!
+   Qwen3-235B           94.1%     46.2%       +47.9%  39
+   Kimi-K2              94.8%     37.7%       +57.1%  61
+
+Four of five models are WORSE THAN A COIN FLIP when they claim 90%+ confidence.
+GPT-5.2-XHigh places 35% of its 300 predictions in this overconfident bin —
+and is right only 33.7% of the time there.
+
+Even Claude (the best) is 25 percentage points overconfident in this bin.
+
+PROPHET ARENA IMPLICATION: Any single-model probability ≥ 0.90 must be
+treated with extreme skepticism. Post-hoc compression toward the middle is
+essential when the raw confidence is in this range.
+
+1.5 Cost-performance
+--------------------
+   Model            Cost      Tokens  Acc    ECE
+   DeepSeek-V3.2    $0.36     304K    64.3%  0.284
+   Kimi-K2          $0.94     624K    67.1%  0.298
+   Qwen3-235B       $1.19     594K    65.7%  0.297
+   Claude Opus 4.5  $11.63    224K    69.3%  0.120
+   GPT-5.2-XHigh    $30.32    2.07M   65.3%  0.395
+
+GPT-5.2-XHigh costs 84× more than DeepSeek for WORSE calibration.
+Claude is the only model providing genuine calibration improvement, and at
+1/3 the cost of GPT-5.2-XHigh.
+
+1.6 Category-level performance (Claude Opus 4.5 only)
+----------------------------------------------------
+   Category           N    Acc    Brier
+   Sports             83   75.9%  0.193  ← strong
+   Entertainment      47   78.7%  0.187  ← strong
+   Elections          24   75.0%  0.172  ← strong
+   Financials         8    75.0%  0.203  ← strong
+   Climate/Weather    9    77.8%  0.229  ← strong
+   Mentions           19   52.6%  0.357  ← weak
+   World              6    50.0%  0.262  ← weak
+   Economics          4    50.0%  0.326  ← weak
+   Crypto             11   36.4%  0.240  ← WORSE THAN CHANCE
+
+LLMs are good on Sports/Entertainment/Elections/Financials. Bad on
+Crypto/World/Economics/Mentions (high inherent uncertainty + less training).
+
+1.7 What was NOT tested (the open territory)
+--------------------------------------------
+   ❌ Base-rate priming
+   ❌ Retrieval augmentation
+   ❌ Self-consistency / multi-sample
+   ❌ Multi-model ensembling
+   ❌ Chain-of-thought variants
+   ❌ Logit-based confidence
+   ❌ Reference-class forecasting
+   ❌ Post-hoc calibration (Platt, isotonic, temperature)  ← THE BIG ONE
+
+The paper RECOMMENDS post-hoc calibration but does not implement it. This is
+the single biggest known opportunity to improve on the paper's numbers.
+
+1.8 Causes of overconfidence (hypothesized)
+-------------------------------------------
+   1. Training objective: language modeling rewards correct TOKENS, not
+      calibrated probabilities.
+   2. RLHF pressure: users rate confident responses as more helpful → RLHF
+      inadvertently rewards overconfidence.
+   3. Hindsight leakage: even temporal filtering leaks via seasonal/recurring
+      patterns.
+
+Why reasoning hurts:
+   1. Confirmation bias in extended chains — longer = more rationalization.
+   2. Verbosity ≠ epistemic humility.
+
+
+PART 2 — HOW IT WORKS (the evaluation, not the agent)
+================================================================================
+
+This paper is an EVALUATION, not an agent system. The "how it works" is:
+
+For each of 300 questions:
+   1. Pull question text + description + category from Kalshi.
+   2. Pass to one of 5 frontier LLMs with the calibration-instructing prompt.
+   3. Parse the output: <answer>yes/no</answer> AND <confidence>0-100</confidence>.
+   4. Compute Brier, BSS, ECE, MCE, OCR@τ vs ground truth.
+
+The "result" is the calibration measurement.
+
+Practical takeaway for AGENT design: at every probability the LLM emits,
+note that the raw verbalized confidence is unreliable. The 90-100% bin is
+the most dangerous. The model can be PROMPTED to be calibrated and still
+fail — only post-hoc statistical correction works.
+
+
+PART 3 — TRANSLATION TO PROPHET ARENA FORECAST TRACK
+================================================================================
+
+This paper is the MOST DIRECTLY APPLICABLE of the three because Prophet
+Arena IS Kalshi (mostly). The lessons transfer almost 1:1.
+
+3.1 Concept-level translations
+------------------------------
+THE BENCHMARK IS LITERALLY OUR DATA DISTRIBUTION. 300 Kalshi binary
+questions from late 2025. Prophet Arena has Kalshi binary + multi-outcome
+events resolving May 17-31 2026. Same source, same categories, same
+calibration challenges.
+
+KEY CONCEPT: "Calibration cannot be prompted in." We've been adding
+"be calibrated" / "avoid overconfidence" / Halawi-style guidance to v8's
+prompt. The paper shows this MARGINALLY HELPS but doesn't fix the
+underlying RLHF bias. Mathematical post-hoc correction (Platt) is the
+real fix — which we've now done.
+
+KEY CONCEPT: "Reasoning hurts calibration." This is alarming for our v8
+which uses reasoning mode (`reasoning.effort=medium`) on Opus, o3,
+DeepSeek-R1. The paper's evidence: 26× more reasoning tokens → 3× WORSE
+ECE.
+   → We should test v8 WITHOUT reasoning mode and compare.
+   → Or use reasoning mode only for the answer-selection step, and elicit
+     confidence from a non-reasoning pass.
+
+KEY CONCEPT: "Per-category yes-rates differ wildly." We have per-category
+α (Sports 0.70, Politics 0.50, Entertainment 0.35, Elections 0.30) but
+these are for Kalshi BLEND, not for the LLM prior itself. We could ALSO
+add per-category base-rate ANCHORS to the LLM prompt:
+   "Note: in this category, the historical yes-rate is X%."
+
+3.2 Technique-level changes to v8
+---------------------------------
+Change 1: Confirm Claude Opus 4.5 IS our default in v8.
+   Currently we use anthropic/claude-opus-4.7 (a successor to 4.5). Per
+   this paper, Opus is the SOLE model that beats base rate. Reinforces our
+   choice. Keep Opus as the dominant ensemble member.
+
+Change 2: De-prioritize the reasoning mode for confidence elicitation.
+   The paper shows reasoning models OVER-CONFIDENCE more. Our v8 currently
+   uses reasoning=medium on Opus/o3/DeepSeek-R1/Gemini. Consider:
+      a) Setting reasoning.effort=low for confidence pass
+      b) Using reasoning for ANSWER but separate non-reasoning for confidence
+      c) Apply MORE AGGRESSIVE Platt scaling to compensate
+
+Change 3: Add per-category base-rate to prompt context.
+   In agent_v8._format_user_prompt(), insert:
+      "Historical yes-rate in this category: <X>%"
+   Build the per-category yes-rate table from the Kalshibench full dataset
+   (huggingface.co/datasets/2084Collective/kalshibench-v2 — 1,531 examples).
+   Use it as a Bayesian prior anchor.
+
+Change 4: Tune Platt scaling against Kalshibench, not just our 26-event
+sample. The Kalshibench HF dataset gives us 1,531 labeled examples — n=58×
+larger than our smoke set. This is enough to FIT a real per-category Platt
+curve (not just one global α).
+   Fit per-category α on Kalshibench → apply to v8 by category.
+
+3.3 Prophet API handling
+------------------------
+   • Categories in Prophet Arena events come from the `category` field. The
+     Kalshibench categories MATCH our v8 categories. Direct mapping.
+   • For multi-outcome Prophet events (e.g. NHL Calder w/ 30 outcomes),
+     Kalshibench doesn't have a direct test — it's binary only. We must
+     generalize multi-class Platt + per-category α ourselves (we have).
+   • The Brier on Kalshibench's Claude Opus 4.5 is 0.227. That's roughly
+     half of our v8's 0.408 on the 26-event smoke. The gap is because our
+     26 includes 3-5 catastrophic-fail events (OH-15, WV-01, ToC) that
+     dominate the average. Take heart: the underlying model is strong;
+     our pipeline failures are concentrated.
+   • Yes-rate calibration: Prophet Arena events likely have a similar
+     yes-rate spread to Kalshibench (~40% overall, 12-67% per category).
+     A uniform climatology baseline is bad; per-category is better.
+
+3.4 Specific recipes worth copying
+----------------------------------
+   • Confusion matrix monitoring: all 5 KalshiBench models UNDER-PREDICT
+     YES (high false-negative rate). Our v8 may have the same issue. If
+     observed on live eval data, add an inverse-acquiescence shift.
+   • OCR@τ (overconfidence rate at threshold τ): track this on our predictions.
+     If we predict ≥0.90 on Outcome X, the historical empirical rate of
+     Outcome X being correct should be ≥90%. If not, we're overconfident.
+   • The HF dataset (2084Collective/kalshibench-v2): pull it as a held-out
+     calibration set. Run our agent_v8 on it, fit Platt, validate. This is
+     a far more principled tuning ground than our 26-event sample.
+
+
+PART 4 — PROS AND CONS for adopting Kalshibench insights
+================================================================================
+
+PROS
+----
+1. CLOSEST DATA MATCH to Prophet Arena of the 3 papers (same source: Kalshi).
+2. VALIDATES OUR MODEL CHOICE (Claude Opus dominates other frontier LLMs
+   on calibration on Kalshi data).
+3. PROVIDES A REAL CALIBRATION SET (1,531 examples on HF) that's 58× larger
+   than our 26-event smoke.
+4. DOCUMENTS PER-CATEGORY YES-RATES, which we can use as priors directly.
+5. CONFIRMS PLATT IS THE ANSWER for the overconfidence bin (90-100%) where
+   single models fail catastrophically.
+6. WARNS US about reasoning-mode pitfall before live eval.
+
+CONS
+----
+1. PAPER IS AN EVALUATION, NOT A SYSTEM. No agent architecture to lift.
+2. BINARY ONLY — doesn't cover multi-outcome Prophet events (Calder, ToC,
+   Roast subject) which were the worst in our smoke test.
+3. NO RETRIEVAL TESTED — paper deliberately tests RAW model capability. The
+   95% performance gap to humans is partly because retrieval is missing.
+4. 300 QUESTIONS is small. Variance across models could be sample artifact.
+5. CATEGORY BREAKDOWN ONLY DONE FOR CLAUDE — can't tell if other models
+   have category-specific failure modes.
+6. RESOLUTION WINDOW NARROW (46 days). Doesn't test long-horizon forecasts.
+7. NO MARKET-PRICE BASELINE in the paper — we still don't know the Kalshi
+   midpoint's Brier on these specific 300 questions. (We strongly suspect
+   market price would be the toughest baseline to beat.)
+
+
+PART 5 — RECOMMENDED CHANGES TO v8 (concrete, prioritized)
+================================================================================
+
+Priority 1 (HIGH ROI, MEDIUM EFFORT):
+  ☐ Download Kalshibench-v2 HF dataset.
+  ☐ Run agent_v8 on a subset (50-100 questions) to validate Brier ≤ 0.23
+    (Claude's solo number). If significantly worse, debug pipeline.
+  ☐ Fit per-category Platt α on this 1,531-question dataset instead of our
+    26-event smoke. Replace the global α=2.0 (or 1.73) with per-category
+    Platt curves.
+
+Priority 2 (LOW EFFORT, MAYBE-WIN):
+  ☐ Add per-category yes-rate hint to v8 prompt:
+      "Historical yes-rate in this category (Kalshi-wide): <X>%"
+  ☐ Lower reasoning.effort from "medium" to "low" on Opus (calibration test).
+  ☐ Add inverse-acquiescence shift (-3 to -5 pp on all "yes" predictions)
+    if we observe under-prediction on live eval.
+
+Priority 3 (HIGHER EFFORT):
+  ☐ Build a separate non-reasoning confidence pass: reasoning model picks
+    the answer; a non-reasoning model gives the confidence on that answer.
+    May reduce the 90-100%-bin disaster.
+  ☐ Add OCR@τ monitoring to live dashboard — flag overconfident wrong picks
+    in real time for refit.
+
+================================================================================
+END Kalshibench analysis
+================================================================================

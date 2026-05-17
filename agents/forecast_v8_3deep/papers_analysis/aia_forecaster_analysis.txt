@@ -1,0 +1,366 @@
+================================================================================
+AIA FORECASTER — Paper Analysis + Prophet Arena Forecast Track Translation
+================================================================================
+Source: arXiv 2511.07678 — "AIA Forecaster: A Multi-Agent LLM System Matching
+Expert Human Superforecasters" (Bridgewater AIA Labs)
+Local extract: /workspace/context/aia_extracted/
+================================================================================
+
+
+PART 1 — PAPER SUMMARY
+================================================================================
+
+1.1 Key findings (headline)
+---------------------------
+First verified LLM-based forecasting system to match expert human superforecasters
+at scale on real-world events. On the ForecastBench benchmark:
+
+  • FB-7-21 (498 questions):
+      AIA = 0.1076   Superforecasters = 0.1110   Prior LLM SOTA = 0.133
+      OpenAI o3 (no scaffolding) = 0.1221
+  • FB-8-14 (602 questions):
+      AIA = 0.1099   Superforecasters = 0.1152
+  • FB-Market (76 questions):
+      AIA = 0.0753   Superforecasters = 0.0740   Market consensus = 0.0965
+  • MarketLiquid (1610 questions, their novel harder benchmark):
+      AIA = 0.1258   Market = 0.1106 (AIA loses to market alone)
+      But AIA+Market ensemble = 0.106 (beats both — diversifying signal)
+
+Statistically indistinguishable from superforecasters (paired p≈0.10).
+
+1.2 Architecture (3 pillars)
+----------------------------
+Pillar 1 — Agentic individual forecasters (M = 10):
+  Each independent agent does iterative adaptive search:
+      q → E₁ → E₂ → ... → Eₙ → (reasoning R_i, probability p_i)
+  Multi-turn, adaptive, agent chooses what to query and when. Each forecaster
+  outputs both a probability AND its reasoning trace.
+
+Pillar 2 — Supervisor reconciliation:
+  Reads all M reasoning traces. Identifies disagreements between forecasters.
+  Issues NEW search queries to resolve those disagreements (base-rate lookups,
+  fact-checks). Outputs aggregated forecast + a confidence label
+  (high / medium / low). Only "high-confidence" supervisor updates override
+  the simple mean; medium/low fall back to the simple mean of the M forecasts.
+
+Pillar 3 — Statistical correction (Platt scaling):
+  Applied to the supervisor's final scalar output:
+      p_final = sigmoid(α · log(p/(1-p))) = p^α / (p^α + (1-p)^α)
+  Fixed α = √3 ≈ 1.73 (do NOT tune on benchmark; learned optimum ≈ 2.27
+  gives only marginal extra gain but risks overfitting).
+
+1.3 The math (key derivations from Appendix G.2)
+-------------------------------------------------
+Multi-class Platt: p_i → p_i^α / sum_j(p_j^α)
+General form with shift: p → sigmoid(α·log(p/(1-p)) + log d)
+
+CRITICAL THEOREM proved in this paper for the first time: log-odds
+extremization IS Platt scaling applied to the geometric mean of forecasts.
+That is, the Tetlock-style extremization formula
+
+      log(p̂/(1-p̂)) = (a/n) · Σᵢ log(pᵢ/(1-pᵢ))
+
+is mathematically equivalent to Platt scaling of the geometric mean of {pᵢ}
+with parameter a, shift = 1. This means "extremization" and "Platt on geo-mean"
+are NOT two separate techniques to stack — they're the same technique.
+
+For an AIA-style system that uses a supervisor, Platt is the better choice
+than extremization because it operates on the supervisor's scalar output (so
+you can keep the supervisor in the pipeline). Extremization would require
+removing the supervisor.
+
+1.4 Models used
+---------------
+Default: OpenAI o3 (October 2023 knowledge cutoff — well before benchmark
+events, eliminates pretraining lookahead bias). Used in three roles:
+forecaster, supervisor, and foreknowledge-bias judge.
+
+Model comparison on MarketLiquid (no supervisor, Brier):
+   Claude Sonnet 4 = 0.1195 (best, but knowledge cutoff overlaps benchmark)
+   OpenAI o3       = 0.1242  ← chosen as default for clean cutoff
+   Qwen-32b        = 0.1404
+   GPT-5           = 0.1412
+   Gemini 2.5 Pro  = 0.1456
+   GPT-4o          = 0.1485
+
+Claude Opus 4 excluded as "prohibitively slow."
+OpenAI OSS-120b appeared best but turned out to be exploiting foreknowledge
+bias (17% of queries leaked outcome info).
+
+1.5 Datasets / benchmarks
+-------------------------
+• FB-7-21:    498 binary questions, resolution range 7/28/2024 – 12/31/2050.
+              Original Karger ForecastBench.
+• FB-8-14:    602 binary questions, snapshot of 08/14/2025.
+• FB-Market:  76 questions sourced from prediction markets (subset of FB-7-21).
+• MarketLiquid: 1610 questions, novel benchmark built from a popular public
+              prediction market. Politics/policy/econ/AI only. Markets must
+              be ≥1 week open with ≥5,000 contracts traded. 322 underlying
+              markets × 5 sampling dates per market.
+• MarketNightly: ~250/night on live OPEN markets — immune to foreknowledge
+              bias (resolution unknown at query time).
+
+1.6 Search strategy details
+---------------------------
+"Agentic, adaptive" search beats fixed-template retrieval substantially.
+On FB-7-21 (no supervisor, no Platt):
+   No search:                      Brier 0.1230
+   Non-agentic search (3 queries): Brier 0.1217
+   Agentic search:                 Brier 0.1140
+
+Two search providers tested ("Search-A" natural-language; "Search-B" web-page
+lists). Search-A wins consistently because it returns dense answers, not link
+lists.
+
+Foreknowledge bias mitigation: dedicated LLM-as-judge step that reads search
+snippets + reasoning citations and flags possible leakage. High-recall, low
+precision. Audit on 502 traces: ~1.65% residual bias rate. Blocklist
+maintained for high-leakage domains (FIDE Wikipedia, WeatherSpark, Macrotrends,
+NASDAQ market-activity, etc.).
+
+1.7 Component ablation (cumulative Brier reduction on FB-7-21)
+--------------------------------------------------------------
+   No-search baseline:          0.1230
+   + Agentic search:            0.1140  (−0.0090)  ← biggest single component
+   + Supervisor:                0.1125  (−0.0015)
+   + Platt scaling (α=√3):      0.1076  (−0.0049)  ← second biggest
+
+Ensemble vs single (10 vs 1):   0.1140 vs 0.1182  (−0.0042)
+
+The ENSEMBLE is the dominant Brier-mover. Search and Platt are next. The
+supervisor adds smaller value but is structurally important because it (a)
+catches outliers that would otherwise drag the mean and (b) enables Platt to
+be applied to a scalar.
+
+1.8 What does NOT work (key negative findings)
+----------------------------------------------
+• Naive "best-of-k" (LLM picks one of k forecasts): 0.1191 — barely better
+  than a single forecast. LLMs are bad at picking the best.
+• Naive meta-reasoning ("LLM reads all forecasts and aggregates"): 0.1168 —
+  WORSE than simple mean (0.1140). The LLM overemphasizes outliers.
+• Prompting to "be calibrated": LARGELY INEFFECTIVE for hedging bias.
+  Mathematical corrections (Platt) are far more robust.
+
+1.9 Live-market experiments (immune to foreknowledge bias)
+----------------------------------------------------------
+On 64 closed real markets:
+   AIA with search:    Brier 0.1002
+   AIA without search: Brier 0.3609  (3.6× worse than with search)
+   Market consensus:   Brier 0.1111
+
+So agentic search makes a 3.6× live-market Brier difference. AIA slightly
+beats market consensus, though n=64 is small.
+
+1.10 Limitations
+----------------
+• Binary, unconditional events only. Multi-class ("which sector wins?"),
+  point estimates ("what will CPI be?"), and conditional forecasts are
+  explicitly deferred.
+• MarketLiquid (harder benchmark): AIA at 0.126 still loses to market at
+  0.111.
+• Foreknowledge bias is endemic to search APIs (live widgets, continuously
+  updated pages); can't be fully eliminated.
+• Authors caution against high-stakes deployment without human oversight.
+
+
+PART 2 — HOW IT WORKS (Operational explanation)
+================================================================================
+
+For one question:
+
+Step 1 — Spawn 10 parallel agents. Each runs independently. No coordination.
+
+Step 2 — Each agent gets a search tool. The agent decides on its own when
+         to issue a query, what to query, and when it has enough information.
+         A typical agent runs 3-8 queries iteratively, with each subsequent
+         query informed by what the prior search returned. It then produces
+         (probability, reasoning).
+
+Step 3 — Supervisor agent reads all 10 reasoning traces and 10 probabilities.
+         It DOES NOT just average. Instead:
+            (a) Identifies where forecasters disagree
+            (b) Generates targeted "clarifying" queries (e.g., base rate
+                lookups, fact-checks)
+            (c) Runs those queries
+            (d) Emits its own final probability + a confidence label
+
+Step 4 — Decision rule on the supervisor's output:
+            - If supervisor confidence = "high" → use supervisor's probability
+            - If "medium" or "low"             → use simple mean of the 10
+         This protects against the "LLM overweights outliers" failure mode.
+
+Step 5 — Apply Platt scaling with fixed α = √3 to the scalar from Step 4.
+         This sharpens probabilities along the sigmoid (e.g., 0.6 → 0.66,
+         0.85 → 0.93). Fixes the LLM RLHF-induced hedge-to-0.5 bias.
+
+Step 6 — Output final probability.
+
+
+PART 3 — TRANSLATION TO PROPHET ARENA FORECAST TRACK
+================================================================================
+
+Prophet Arena = real-time event slate (Kalshi-sourced markets, mostly binary
+or multi-outcome categorical). Our agent receives a POST /predict per event.
+Response must be {"probabilities": [{"market": <outcome>, "probability": float}]}.
+
+3.1 Direct translations (1:1)
+-----------------------------
+ALL three pillars apply directly:
+
+PILLAR 1 (M parallel agents):
+  → Our v8 already has 5 parallel agent slots (Opus/CoT, Opus/ToT,
+    Opus/Calibrated, GPT-5/Calibrated, Gemini/Calibrated).
+  → AIA paper recommends M=10 with diminishing returns past 5. Our 5 is
+    defensible. If cost permits, double Opus slots to 8 (5 with different
+    prompts × different temperature settings).
+  → Each agent should have its OWN search tool, not share one summary.
+    Currently we share one Tavily summary across all 5 — this LOSES
+    diversity. Per-agent independent retrieval would help.
+
+PILLAR 2 (Supervisor):
+  → Our v8 meta-reasoner does this — but is currently weaker than AIA's:
+       - We pass ALL 5 agent probs + reasoning to one Opus call
+       - But we DO NOT give the meta-reasoner a search tool to run
+         clarifying queries
+       - We DO NOT have a confidence label that decides "use supervisor
+         vs fallback to mean"
+  → Upgrade: give the meta-reasoner Tavily access for clarifying queries,
+    add the confidence-label fallback.
+
+PILLAR 3 (Platt scaling):
+  → Done. v8 has FORECAST_PLATT_A = 2.0 default. AIA recommends α = √3
+    ≈ 1.73 (slightly lower). On our 26-event smoke test our sweep showed
+    monotonic improvement to α=8, suggesting our sample is too small to
+    pick the right α reliably. The AIA-recommended α=√3 may transfer
+    better to live eval.
+  → Decision: lower our FORECAST_PLATT_A from 2.0 → 1.73 to match the
+    paper's evidence-based value. We can always retune on accumulating
+    live data during the eval window.
+
+3.2 Concept-level recipes to lift
+---------------------------------
+  • Use OpenAI o3 as one ensemble member. Its October 2023 cutoff means
+    less risk of pretraining lookahead bias. (We already added o3 in v7
+    Phase 1; keep in v8.)
+  • Foreknowledge bias is less of a concern for Prophet Arena LIVE eval
+    because events resolve in the FUTURE — there's no answer to leak.
+    BUT for the smoke-test on settled events, we already addressed this
+    with per-event real_resolution_dates + Tavily date filter.
+
+3.3 Technique-level changes to v8
+---------------------------------
+  Change 1: Lower Platt α to √3 ≈ 1.73
+     File: agent_v8.py line ~80
+     Edit: FORECAST_PLATT_A default 2.0 → 1.73
+
+  Change 2: Give meta-reasoner a search tool
+     File: agent_v8.py _meta_reason() function
+     Before invoking the meta-LLM, give it the option to call Tavily for
+     1-2 clarifying queries. Add a tool-use loop. Cost: +1-2 LLM calls per
+     event.
+
+  Change 3: Add supervisor confidence label + fallback
+     The meta-reasoner outputs not only probabilities but also
+     `confidence: "high"|"medium"|"low"`. If "medium"/"low", we use the
+     simple mean of the 5 agent probabilities instead.
+
+  Change 4: Per-agent independent retrieval (not just shared summary)
+     Currently all 5 agent slots see the same Tavily brief. AIA paper
+     emphasizes that diversity in research paths is part of why ensembling
+     works. Give each agent its own Tavily query budget (2-3 queries each).
+     Cost: 5× Tavily calls per event, but each is free under 1000/mo.
+
+3.4 Prophet API handling (concrete)
+-----------------------------------
+  • POST /predict on our server.py:
+      Takes the standard Event JSON from Prophet Arena
+      Returns the standard {"probabilities": [...]} shape
+      No changes needed to the API surface — all AIA-style improvements
+      live INSIDE agent_v8.predict().
+
+  • Server timeout: AIA's pipeline (M=10 with agentic search) is slower
+    than ours. With supervisor + Platt our budget is ~5-8 min per question.
+    Prophet Arena's expected timeout window is 10 min per request.
+    Mitigation: agent slots run in parallel; supervisor sequential after.
+    Cache by market_ticker so repeated requests during eval return fast.
+
+  • Backoff: live markets can be queried multiple times. If supervisor
+    confidence was "low" last call, but we now have new evidence, the
+    cache key should incorporate a time bucket (we already do 30 min TTL).
+
+3.5 Specific recipes worth copying
+----------------------------------
+  • Foreknowledge-judge prompt (Appendix D of AIA paper) — adapt for our
+    smoke-test bias audits. We already do post-hoc date filtering; could
+    add LLM-as-judge as a backstop.
+  • Domain blocklist: FIDE rankings Wikipedia, WeatherSpark, Macrotrends,
+    NASDAQ market-activity. Apply at Tavily query time as `exclude_domains`.
+  • Bootstrap-resampling at question level for pairwise p-values during
+    development comparisons.
+
+
+PART 4 — PROS AND CONS for adopting AIA pattern in Prophet Arena
+================================================================================
+
+PROS
+----
+1. PROVEN: matches superforecasters on ForecastBench, the closest public
+   benchmark to Prophet Arena. This is the only LLM forecasting system
+   verified to do so.
+2. EVERY COMPONENT is independently validated by ablation. Search is biggest
+   (~−0.009), ensembling next (~−0.004), Platt (~−0.005), supervisor smallest
+   (~−0.0015). Each can be added incrementally.
+3. PLATT SCALING IS FREE. Pure math, no LLM calls. Already integrated.
+4. SUPERVISOR FALLBACK pattern (high → use; low → fall back to mean) is
+   robust and easy to implement.
+5. MATHEMATICAL CONNECTION (extremization = Platt of geo-mean) means we
+   don't accidentally stack two redundant operations.
+6. EVIDENCE-BASED HYPERPARAMETERS: α=√3, M=10. Not tuned on our small smoke
+   set, less likely to overfit.
+
+CONS
+----
+1. COST: M=10 forecasters + 1 supervisor + retrieval per question is
+   expensive. Our v8 already at $1-2/event with 5 slots. M=10 would 2×.
+   For ~200 events over the eval window = $400-800.
+2. LATENCY: Sequential supervisor-after-parallel pattern adds 30-60s
+   end-to-end. Prophet Arena 10-min timeout is generous, but per-pod
+   throughput suffers.
+3. PROPHET ARENA HAS MULTI-OUTCOME EVENTS (e.g. NHL Calder, ToC). AIA paper
+   only validated binary. Platt extension to multi-class is what we did
+   (p_i^α / sum_j p_j^α) — mathematically reasonable but not validated by
+   the paper.
+4. RELIANCE ON o3 OR SIMILAR REASONING MODEL: AIA used o3 as default. Our
+   v8 has Opus 4.7 as the strongest reasoning model. Empirically Opus does
+   better on Brier in our tests but uses more tokens — cost concern.
+5. THE 0.30 GAP WE'RE FIGHTING: AIA reports Brier 0.10-0.13 on benchmarks
+   that are similar to Prophet Arena. We're at 0.39 on smoke test. Most of
+   that gap is from THIN-EVIDENCE / WRONG-CONFIDENT events (OH/WV primaries,
+   ToC, etc.) which AIA doesn't address either. No magic bullet here.
+6. THE SUPERVISOR-WITH-TOOLS UPGRADE adds engineering complexity, risk of
+   tool-call loops, and increased latency. Worth doing but not trivial.
+
+
+PART 5 — RECOMMENDED CHANGES TO v8 (concrete, prioritized)
+================================================================================
+
+Priority 1 (LOW RISK, HIGH ROI):
+  ☐ Lower FORECAST_PLATT_A from 2.0 to 1.73 (sqrt(3)). One line. Lower
+    overfit risk on n=26. Live data can re-tune.
+  ☐ Add Tavily blocklist for known-leakage domains.
+
+Priority 2 (MEDIUM):
+  ☐ Add supervisor confidence label + fallback-to-mean. ~30 min edit to
+    agent_v8._meta_reason() + _parse_agent_response().
+  ☐ Give each of the 5 agent slots its OWN Tavily retrieval (independent
+    queries), not just shared summary. ~1 hour edit.
+
+Priority 3 (HIGHER COST):
+  ☐ Increase M from 5 to 8-10 agent slots. Doubles cost. Marginal Brier
+    gain ~−0.005 to −0.010.
+  ☐ Give the meta-reasoner its own search tool for clarifying queries.
+    ~2 hours edit including tool-use loop logic.
+
+================================================================================
+END AIA Forecaster analysis
+================================================================================

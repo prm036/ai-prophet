@@ -1,0 +1,535 @@
+================================================================================
+FINAL ARCHITECTURE TO WIN PROPHET ARENA FORECAST TRACK — 1ST PLACE
+================================================================================
+Synthesis of:
+  - AIA Forecaster paper (arXiv 2511.07678) — matches superforecasters
+  - Kalshibench paper (arXiv 2512.16030) — Kalshi-specific calibration
+  - Wisdom of the Silicon Crowd (arXiv 2402.19379) — ensemble suffices
+  - metac-bot-ha (Bridgewater AIB Fall 2025 submission) — production patterns
+  - forecasting-tools (Metaculus official) — SDK
+  - Our v8 system + 26-event smoke test results
+
+Last updated: 2026-05-17 (~13h to submission deadline)
+================================================================================
+
+
+PART 1 — WHAT THE EVIDENCE SAYS (cross-paper synthesis)
+================================================================================
+
+1.1 The five things that ACTUALLY move Brier (Pareto-ordered)
+-------------------------------------------------------------
+Based on the ablation tables in AIA + Kalshibench + Silicon Crowd:
+
+   1. RETRIEVAL — agentic, adaptive, multi-turn search.
+      AIA: −0.009 Brier on FB-7-21 (biggest single component).
+      Live markets without search vs with: 3.6× Brier difference.
+      Caveat: Silicon Crowd shows internet-access barely helps without
+      proper retrieval pipeline. Quality > quantity.
+
+   2. PLATT SCALING — fixed α = √3 ≈ 1.73 on aggregated probability.
+      AIA: −0.0049 Brier additional after ensembling and supervisor.
+      Kalshibench: 90-100% confidence bin is wrong 30-60% of the time
+      across all models — Platt is the answer.
+
+   3. ENSEMBLING — multiple independent forecasters, median or mean.
+      AIA: M=10 with diminishing returns past 5. Δ Brier ~−0.004 vs single.
+      Silicon Crowd: 12 LLMs ≈ human crowd; aggregate is the 2nd-best
+      calibrated system measured. But best SINGLE model often beats
+      ensemble — ensemble buys CALIBRATION not ACCURACY.
+
+   4. SUPERVISOR / META-REASONER — but with the right pattern.
+      AIA: −0.0015 Brier additional. SMALL but structurally important.
+      NAIVE meta-reasoning HURTS: AIA shows naive Halawi-style aggregator
+      is WORSE than simple mean (0.1168 vs 0.1140). The supervisor must
+      (a) read reasoning traces, (b) issue clarifying SEARCH queries,
+      (c) output confidence label, (d) fall back to mean if confidence
+      isn't "high".
+
+   5. BASE MODEL QUALITY — pick the best one available.
+      Kalshibench: Claude Opus 4.5 is the only model with positive BSS.
+      All others worse than base-rate baseline.
+      Silicon Crowd: GPT-4 alone (0.15) beat the 12-model ensemble (0.20).
+      AIA: Sonnet 4 marginally beats o3 on Brier but cutoff overlaps
+      benchmark window.
+      Net: Anthropic Opus-class is the strongest forecasting LLM today.
+
+1.2 The five things that do NOT help (avoid these)
+--------------------------------------------------
+   1. EXTENDED REASONING MODE for calibration.
+      Kalshibench: 26× more reasoning tokens → 3× WORSE ECE.
+      Reasoning chains amplify confirmation bias. Use them for answer
+      selection, not for confidence elicitation.
+
+   2. PROMPTING "BE CALIBRATED".
+      AIA: largely ineffective for hedging bias.
+      Kalshibench: explicit calibration instruction in prompt + still
+      systematic overconfidence.
+      Math (Platt) is robust; prompts are not.
+
+   3. NAIVE BEST-OF-K LLM PICKING.
+      AIA: best-of-k is WORST aggregator tested (0.1191). LLMs are bad
+      at picking the best forecast.
+
+   4. NAIVE META-REASONING ("LLM read all forecasts, aggregate").
+      AIA: WORSE than simple mean. Model overweights outliers.
+      Silicon Crowd: linear pool beats LLM's own Bayesian update.
+
+   5. LET LLM INCORPORATE EXTERNAL SIGNALS DIRECTLY.
+      Silicon Crowd Study 2: LLM-after-update is significantly WORSE
+      than 0.5*LLM + 0.5*human_median.
+      Translation: do market-price blending OUTSIDE the LLM call, not
+      inside the prompt. (Our v8 already does this correctly.)
+
+1.3 Lessons specific to Kalshi / Prophet Arena
+----------------------------------------------
+   • Per-category yes-rates differ wildly (12-67%). Climatology baseline
+     should be per-category, not global 50%.
+   • Categories where LLMs do WELL: Sports, Entertainment, Elections,
+     Financials, Climate.
+   • Categories where LLMs do POORLY (~chance): Crypto, Mentions, World,
+     Economics.
+   • For poor-performing categories, market price is likely much more
+     reliable than LLM signal — increase α toward market.
+   • OH/WV-style small US primaries are inherently hard (Kalshibench
+     would call this "Mentions" or low-data Elections subset).
+
+1.4 The mathematical insight that ties it together
+--------------------------------------------------
+AIA appendix proves: LOG-ODDS EXTREMIZATION = PLATT SCALING OF GEOMETRIC MEAN.
+This means we don't stack two redundant calibration ops — pick ONE:
+   Option A: Mean of probs → supervisor → scalar → Platt
+   Option B: Geometric mean of probs → extremize (= Platt of geo-mean)
+AIA picks A because it allows a supervisor in the middle. We follow A.
+
+
+PART 2 — RECOMMENDED ARCHITECTURE FOR PROPHET ARENA WIN
+================================================================================
+
+This is agent_v9 — the synthesis of all three papers + our existing v8.
+
+ARCHITECTURE DIAGRAM (text):
+
+   POST /predict (Prophet Arena event)
+              │
+              ▼
+   ┌──────────────────────────────────────────────────┐
+   │ STEP 0 — Event normalization + cutoff resolution  │
+   │   - Look up real_resolution_date(market_ticker)   │
+   │     (per-event hand-curated map; for live events  │
+   │      cutoff_dt = now())                            │
+   │   - Determine category, outcomes, yes/no/multi    │
+   └──────────────────────────────────────────────────┘
+              │
+              ▼
+   ┌──────────────────────────────────────────────────┐
+   │ STEP 1 — Retrieval (PER-AGENT independent)        │
+   │   For each of M=5 agents:                         │
+   │     a) Generate 2-3 search queries (Haiku)        │
+   │     b) Tavily with topic="news",                  │
+   │        start_date=cutoff-90d, end_date=cutoff     │
+   │     c) Drop unknown-date sources (RFC 2822 parser)│
+   │     d) Drop sources >= cutoff (defense in depth)  │
+   │     e) Apply foreknowledge-bias domain blocklist  │
+   │     f) Haiku summary -> evidence_brief_i           │
+   │   Cost: 5 × (1 query-gen + 3 Tavily + 1 summary)  │
+   │        = 25 small-LLM calls (~$0.10/event)        │
+   └──────────────────────────────────────────────────┘
+              │
+              ▼
+   ┌──────────────────────────────────────────────────┐
+   │ STEP 2 — Pre-resolution market prior              │
+   │   - Kalshi /candlesticks per outcome at cutoff_dt │
+   │     (or current price if event still open)        │
+   │   - Returns {outcome: yes_price, mode}            │
+   │     mode in {exact, opening, missing}             │
+   │   - For LIVE eval: use current Kalshi mid-price   │
+   └──────────────────────────────────────────────────┘
+              │
+              ▼
+   ┌──────────────────────────────────────────────────┐
+   │ STEP 3 — M=5 PARALLEL FORECASTING AGENTS          │
+   │                                                    │
+   │   a. Opus 4.7 + Calibrated/Halawi prompt           │
+   │      reasoning.effort=low  (Kalshibench warning)  │
+   │                                                    │
+   │   b. Opus 4.7 + Chain-of-Thought prompt            │
+   │      reasoning.effort=medium  (for ANSWER, not conf) │
+   │                                                    │
+   │   c. Opus 4.7 + Tree-of-Thought prompt             │
+   │      reasoning.effort=medium                       │
+   │                                                    │
+   │   d. GPT-5 + Calibrated prompt                     │
+   │                                                    │
+   │   e. Gemini 2.5 Pro + Calibrated prompt            │
+   │      (Includes per-category yes-rate hint in user  │
+   │       prompt: "historical yes-rate this cat = X%") │
+   │                                                    │
+   │   Each agent sees: event + its OWN evidence_brief_i │
+   │                  + pre-resolution Kalshi prices    │
+   │                  + per-category yes-rate hint      │
+   │                                                    │
+   │   Each outputs: {reasoning, probabilities}         │
+   └──────────────────────────────────────────────────┘
+              │
+              ▼
+   ┌──────────────────────────────────────────────────┐
+   │ STEP 4 — Sanity-check median + Supervisor         │
+   │                                                    │
+   │   4a. Compute MEDIAN across 5 agents per outcome   │
+   │   4b. Supervisor (Opus 4.7) sees all 5 probs +     │
+   │       reasonings. Has access to Tavily for         │
+   │       clarifying queries (1-2 additional). Outputs │
+   │       {reasoning, probabilities, confidence}        │
+   │       where confidence in {"high","medium","low"}   │
+   │   4c. Decision:                                    │
+   │         IF supervisor.confidence == "high"         │
+   │             AND |sup_probs - median_probs| < 0.15  │
+   │         THEN use supervisor probs                   │
+   │         ELSE use median probs                       │
+   │                                                    │
+   │   (AIA pattern + Silicon Crowd median fallback)    │
+   └──────────────────────────────────────────────────┘
+              │
+              ▼
+   ┌──────────────────────────────────────────────────┐
+   │ STEP 5 — Linear-pool with Kalshi market           │
+   │                                                    │
+   │   alpha = ALPHA_BY_CATEGORY[event.category]        │
+   │   for each outcome o:                              │
+   │     if kalshi has price for o:                     │
+   │       p_blend[o] = alpha * kalshi_p[o]             │
+   │                  + (1-alpha) * llm_p[o]            │
+   │     else:                                          │
+   │       p_blend[o] = llm_p[o]                        │
+   │                                                    │
+   │   ALPHA_BY_CATEGORY (Kalshibench-informed):        │
+   │     Sports: 0.65   (LLM does well, but market also)│
+   │     Politics: 0.55                                  │
+   │     Elections: 0.30 (small-district unreliable)    │
+   │     Entertainment: 0.30 (markets thin)             │
+   │     Crypto: 0.85 (LLM bad — trust market)          │
+   │     Economics: 0.85 (LLM bad)                      │
+   │     Companies: 0.55                                 │
+   │     Financials: 0.55                                │
+   │     default: 0.55                                   │
+   └──────────────────────────────────────────────────┘
+              │
+              ▼
+   ┌──────────────────────────────────────────────────┐
+   │ STEP 6 — Confidence guardrail (signal strength)   │
+   │   score = 0                                        │
+   │   if n_evidence_kept >= 10: score += 1             │
+   │   if n_exact_kalshi >= n_outcomes/2: score += 1    │
+   │   if n_exact_kalshi == n_outcomes: score += 1      │
+   │   shrink = {0: 0.60, 1: 0.35, 2: 0.15, 3: 0.05}[s] │
+   │   if shrink > 0:                                   │
+   │     p = shrink * (1/n) + (1-shrink) * p_blended    │
+   └──────────────────────────────────────────────────┘
+              │
+              ▼
+   ┌──────────────────────────────────────────────────┐
+   │ STEP 7 — Platt scaling extremization              │
+   │   alpha = 1.73  (sqrt(3) per AIA paper)            │
+   │   p_i -> p_i^alpha / sum_j(p_j^alpha)              │
+   │   re-clip [0.02, 0.98], re-normalize                │
+   └──────────────────────────────────────────────────┘
+              │
+              ▼
+   ┌──────────────────────────────────────────────────┐
+   │ STEP 8 — Acquiescence-bias correction             │
+   │   IF event is binary AND mean(predicted yes-rate  │
+   │   across recent live events) > 0.55:               │
+   │     apply uniform -3pp shift on yes-probabilities  │
+   │   (per Silicon Crowd: LLMs over-predict yes by ~12pp) │
+   │   (Disabled until we observe live data signal.)    │
+   └──────────────────────────────────────────────────┘
+              │
+              ▼
+   ┌──────────────────────────────────────────────────┐
+   │ STEP 9 — Final clip [0.02, 0.98], normalize,      │
+   │            cache by market_ticker (30 min TTL)    │
+   └──────────────────────────────────────────────────┘
+              │
+              ▼
+   Response: {"probabilities": [{"market": str, "probability": float}, ...]}
+
+2.1 Why this exact ordering
+---------------------------
+   - Retrieval BEFORE Kalshi: evidence informs the LLM's prior, which is
+     then blended with market.
+   - Per-agent independent retrieval: paper-supported, captures diversity.
+   - Supervisor AFTER agents: gives it access to all reasoning traces;
+     allows confidence-based fallback.
+   - Linear pool (Step 5) BEFORE guardrail (Step 6): we want guardrail to
+     operate on the FINAL combined prior, not pre-market.
+   - Platt AFTER guardrail: AIA paper structure (Platt is the last
+     statistical correction).
+   - Acquiescence correction LAST: tiny constant shift, doesn't fight
+     other components.
+
+
+PART 3 — CONCRETE PROPHET API HANDLING
+================================================================================
+
+3.1 Server endpoint
+-------------------
+   File: server.py (already exists, wired to agent_v8). Upgrade to v9.
+
+   POST /predict:
+     Request body: Prophet Arena standard Event JSON
+     Response: {"probabilities": [{"market": str, "probability": float}]}
+     Internal timeout: 8 min (FORECAST_TIMEOUT_SEC)
+     Uniform fallback on any exception or timeout
+     Cache by market_ticker with 30-min TTL
+
+   GET /health:
+     Returns {"status": "ok", "agent": "v9", "cache_size": N}
+
+3.2 Per-event flow on Prophet Arena
+-----------------------------------
+1. PA server POST /predict with event JSON.
+2. Server invokes agent_v9.predict(event).
+3. Inside: STEP 0 ... STEP 9 as above.
+4. Returns probabilities.
+5. PA scores per-event Brier; aggregates over leaderboard period.
+
+3.3 Caching strategy
+--------------------
+PA server MAY repeatedly query the same event during a 2-week eval window.
+   • First call for market_ticker X: full pipeline, ~30-90s.
+   • Subsequent calls within 30 min: serve from cache.
+   • After 30 min: re-run pipeline (markets and news may have moved).
+
+For live events where Kalshi price is updating, cache TTL=30 min strikes a
+balance between freshness and cost.
+
+3.4 Cost estimate per event
+---------------------------
+   - Step 1 retrieval: 25 small-LLM calls (~$0.10)
+   - Step 3 forecasting: 5 large reasoning calls (~$1.50)
+   - Step 4b supervisor: 1 large reasoning call (~$0.50)
+   - Step 4b clarifying queries: 1-2 Tavily + 1 LLM (~$0.10)
+
+   TOTAL: ~$2.20 per event
+   FOR 200 EVENTS × 1 CALL EACH: $440
+   WITH CACHE HITS (~50% revisits): $250-300
+
+If 2-week eval window has more re-queries, budget could go to $500-800.
+
+3.5 Failure modes & graceful degradation
+----------------------------------------
+   • If Tavily fails: agents proceed with empty brief; guardrail shrinks
+     toward uniform.
+   • If Kalshi fails: blend skips market prior; LLM-only prediction.
+   • If meta-reasoner fails: fall back to median of 5 agents.
+   • If individual agent fails: drop it; aggregate over remaining 4 (or
+     fewer).
+   • If ALL agents fail: uniform fallback (1/N per outcome).
+   • If timeout: uniform fallback. Cache invalidated for retry.
+
+3.6 Endpoint registration
+-------------------------
+   Per developer_docs/sections/section_17.txt:
+     POST registration at https://www.prophethacks.com/submit-endpoint
+     Required fields: team_name, endpoint_url, [optional API keys for auth]
+
+   We expose: https://<deployed-domain>/predict
+   No auth header required by default.
+
+
+PART 4 — VS OUR CURRENT v8 — WHAT TO CHANGE
+================================================================================
+
+Our current v8 (Brier 0.39 on smoke):
+   ✓ Real-resolution-aware Tavily filter
+   ✓ Kalshi historical candlestick
+   ✓ 5 parallel agents (Opus×3 prompts + GPT-5 + Gemini)
+   ✓ Meta-reasoner with reasoning + probs
+   ✓ Per-category α blend
+   ✓ Tiered guardrail
+   ✓ Platt scaling a=2.0
+
+Changes for v9 (in priority order):
+
+PRIORITY 1 (low effort, paper-supported):
+  ☐ Lower PLATT_A 2.0 → 1.73 (sqrt(3), AIA-recommended fixed value).
+  ☐ Lower reasoning.effort on confidence-elicitation: try "low" on Opus
+    when generating final probabilities (Kalshibench shows reasoning hurts
+    calibration).
+  ☐ Add per-category yes-rate hint to user prompt (built from Kalshibench
+    full dataset or Prophet sample-resolved data).
+  ☐ Add domain blocklist to Tavily queries (FIDE Wikipedia, WeatherSpark,
+    Macrotrends, NASDAQ market-activity, etc.).
+
+PRIORITY 2 (medium effort, real Brier movers):
+  ☐ Per-agent independent retrieval instead of shared brief. Currently all
+    5 agents see the same Tavily summary. Per AIA, diversity of search
+    paths is a key source of ensemble gain.
+  ☐ Cross-agent MEDIAN as sanity-check / fallback alongside meta-reasoner.
+    If meta is far from median (>0.15), use median.
+  ☐ Update meta-reasoner to output confidence label {high, medium, low}.
+    Implement the AIA-style fallback rule.
+
+PRIORITY 3 (higher effort, defensive depth):
+  ☐ Give meta-reasoner a search tool for 1-2 clarifying queries.
+  ☐ Fit Platt on Kalshibench HF dataset (1,531 examples). Possibly use
+    per-category α values instead of global α.
+  ☐ Add an LLM-as-judge foreknowledge-bias detector (AIA Appendix D).
+
+PRIORITY 4 (optional, if time):
+  ☐ Run no-retrieval ablation; if Brier unchanged, simplify pipeline.
+  ☐ Run same-model-different-prompts (Opus × 5 prompts) ablation.
+  ☐ Tune per-category Platt α on Kalshibench.
+
+EXPECTED Brier IMPACT:
+   v8 baseline:        0.408 (smoke set)
+   + Priority 1 only:  ~0.38-0.39 (small gain)
+   + Priority 2:       ~0.35-0.37 (real gain from per-agent retrieval +
+                                   median fallback)
+   + Priority 3:       ~0.32-0.34 (Kalshibench-fitted calibration)
+   + All:              ~0.28-0.32 (assuming all gains stack subadditively)
+
+   On LIVE eval (200 events, harder distribution):
+   Expected ~0.18-0.28 if changes generalize.
+
+
+PART 5 — BRANDED RECOMMENDATION — what to call it and why
+================================================================================
+
+5.1 Brand name
+--------------
+"Prophet Bridge" or "AIA-Lite Forecast Bot" — explicit attribution to the
+underlying recipe. The "Bridge" connotes:
+   - Bridging multiple LLM perspectives via ensemble
+   - Bridging LLM forecasts with market priors via linear pool
+   - Bridging frontier research (AIA, Silicon Crowd, Kalshibench) into
+     production code
+
+5.2 Tagline
+-----------
+"Calibrated multi-agent forecasting bot: AIA-style ensemble + per-agent
+ retrieval + supervisor reconciliation + Platt scaling. Bridgewater-class
+ architecture, adapted for Prophet Arena."
+
+5.3 README opening pitch (for Devpost & GitHub)
+-----------------------------------------------
+"Production-grade forecasting agent for Prophet Arena Forecast track.
+Implements the AIA Forecaster architecture (arXiv 2511.07678 — the first
+LLM system verified to match expert human superforecasters on
+ForecastBench): M=5 independent agents with adaptive search →
+meta-reasoning supervisor with confidence-based fallback → Platt scaling
+extremization (α=√3). Layered with Kalshi pre-resolution market priors
+(per-category α blend), tiered confidence guardrail for thin-evidence
+events, and zero-bias retrieval pipeline (real-resolution date filtering,
+RFC 2822 parser, domain blocklist). Built to win 1st place."
+
+
+PART 6 — RISK ANALYSIS — what could break the win
+================================================================================
+
+Risk 1: PROPHET ARENA EVAL DISTRIBUTION ≠ SMOKE TEST DISTRIBUTION.
+   Mitigation: Architecture is theoretically motivated, not empirically
+   tuned to 26 events. Platt α=√3 from AIA, not learned on smoke.
+
+Risk 2: COMPETITION HAS A TEAM USING AIA-LIKE STACK ALREADY.
+   Mitigation: Our advantage is (a) integration of Kalshi historical
+   pre-resolution prices (not in any of the papers), (b) per-category α
+   tuned to Kalshi distribution, (c) confidence guardrail for thin-evidence
+   small-district events.
+
+Risk 3: COST OVERRUNS. $500-800 budget could blow up.
+   Mitigation: Cache aggressively (30 min TTL). Set per-event budget cap.
+   Adaptive research depth — skip Step 4b supervisor on "easy" events
+   (high inter-agent agreement).
+
+Risk 4: SERVER GOES DOWN DURING EVAL WINDOW.
+   Mitigation: Fly.io auto-restart. Multi-region if budget allows. Health
+   endpoint for liveness check.
+
+Risk 5: PROPHET ARENA SERVER RATE-LIMITS US.
+   Mitigation: Concurrency control in server.py (hard_limit=10 in fly.toml).
+   FIFO queue. Cache hits return instantly.
+
+Risk 6: NEW PA EVENT TYPES (scalar, conditional) HIT OUR PIPELINE.
+   Mitigation: Detect and pass-through with uniform fallback. Log for
+   manual review.
+
+Risk 7: KALSHI API CHANGES DURING EVAL.
+   Mitigation: Builtin KalshiForecastClient is wrapped behind our kalshi_history.
+   Failure mode is graceful (LLM-only fallback).
+
+
+PART 7 — TIMELINE TO DEPLOY (with 13h remaining)
+================================================================================
+
+T+0:00 - T+0:30  Priority 1 changes (PLATT_A, reasoning.effort, blocklist).
+                Quick smoke test (1-2 events).
+T+0:30 - T+2:00  Priority 2: per-agent retrieval + median fallback +
+                supervisor confidence label.
+T+2:00 - T+2:30  Re-run full 26-event smoke test. Score, document.
+T+2:30 - T+3:30  Deploy to Fly.io (USER MUST DO).
+T+3:30 - T+4:30  Register endpoint at prophethacks.com/submit-endpoint.
+                Devpost + GitHub repo (USER MUST DO).
+T+4:30 - T+6:00  Buffer + verify endpoint live + monitor first eval queries.
+T+6:00 - T+13:00 Continue iterating ONLY if all above is locked. Optional:
+                Kalshibench HF dataset Platt fitting (Priority 3).
+
+
+PART 8 — STOP-LOSS
+================================================================================
+
+If at T+3:00 (T-10:00 to deadline) we have:
+   ❌ No deployed endpoint
+   ❌ No registered submission
+THEN STOP all Priority 2+ changes immediately. Deploy current v8 (Brier 0.39).
+A REGISTERED 0.39 agent beats a NON-REGISTERED 0.25 agent (which scores +∞).
+
+Hard rule: by T-6:00 from deadline (5pm CT Sunday), MUST be deployed and
+registered. No exceptions.
+
+
+PART 9 — FINAL ANSWER TO "WHAT ARCHITECTURE WILL WIN?"
+================================================================================
+
+The winning architecture for Prophet Arena Forecast track is:
+
+   MULTI-AGENT LLM ENSEMBLE (M=5) with PER-AGENT ADAPTIVE RETRIEVAL,
+   reconciled by a META-REASONER with CONFIDENCE-BASED FALLBACK to
+   cross-agent MEDIAN, blended with PRE-RESOLUTION KALSHI MARKET PRICES
+   via PER-CATEGORY α, gated by a TIERED CONFIDENCE GUARDRAIL on thin
+   evidence, finally extremized via PLATT SCALING (α=√3).
+
+   BASE MODELS:
+     - 3× Opus 4.7 (different prompts: Calibrated, CoT, ToT)
+     - 1× GPT-5 (Calibrated prompt)
+     - 1× Gemini 2.5 Pro (Calibrated prompt)
+     - 1× Opus 4.7 supervisor (with Tavily clarifying-query access)
+
+   PROMPTS: Halawi-style base-rate-first calibrated prompt with per-category
+            yes-rate hint, CoT, and ToT variants. NOT the Tetlock-10-commandments
+            version (no evidence it helps).
+
+   RETRIEVAL: Tavily with topic="news", server-side date filter, RFC 2822
+              parser, domain blocklist for foreknowledge bias.
+
+   STATISTICAL CORRECTIONS: Platt scaling α=√3 (AIA-recommended fixed value,
+                            do NOT tune on small smoke samples).
+
+   SAFETY NETS:
+     - Cross-agent median fallback (Silicon Crowd-inspired)
+     - Supervisor confidence threshold (AIA-inspired)
+     - Tiered guardrail for thin-evidence events
+     - Uniform fallback on all errors
+
+   EXPECTED LIVE BRIER: 0.18-0.28 (vs uniform ~0.50-0.65 depending on
+                                    Prophet's binary/multi-class mix).
+
+   COMPETITIVE EDGE: Prior work (AIA) is binary-only on academic
+   benchmarks; we integrate Kalshi pre-resolution market prices (novel
+   for academic papers), per-category α tuned to Kalshi data, and the
+   confidence guardrail addresses the niche-event failure mode (OH/WV
+   primaries) that AIA / Silicon Crowd / Kalshibench don't address.
+
+================================================================================
+END FINAL ARCHITECTURE
+================================================================================

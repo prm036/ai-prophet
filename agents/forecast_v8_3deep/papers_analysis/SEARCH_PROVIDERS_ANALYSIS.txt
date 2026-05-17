@@ -1,0 +1,262 @@
+================================================================================
+SEARCH PROVIDERS — ANALYSIS FOR AIA FORECASTER (Prophet Arena)
+================================================================================
+Written: 2026-05-17 ~04:30 AM CT
+Question: What search providers does AIA Labs use? What do we use? Should
+          we swap, given the AskNews option?
+================================================================================
+
+
+PART 1 — WHAT AIA LABS USED (per arXiv 2511.07678)
+================================================================================
+
+The AIA paper deliberately ANONYMIZES its two search providers:
+   • ProviderA — "focuses primarily on serving natural language user queries"
+                 → returns synthesized snippets / direct answers
+                 (Perplexity / Tavily / Brave style)
+   • ProviderB — "intended to integrate directly with agentic AI systems"
+                 → returns web-page lists for the agent to navigate
+                 (Exa / Linkup style)
+
+AIA ALSO had an "internal corpus of high-quality news data" as a
+supplementary source. We do not have access to this — Bridgewater
+proprietary asset.
+
+Headline findings from AIA paper Section 4.1 (Table on search methodology):
+
+   No search:                  Brier 0.1230
+   ProviderB non-agentic:      Brier 0.12168
+   ProviderB agentic:          Brier 0.11824
+   ProviderA non-agentic:      Brier 0.11738
+   ProviderA agentic:          Brier 0.1140   ← WINNER
+
+⇒ ProviderA (NL-synthesis style) clearly beats ProviderB (link-list style),
+  consistently, across agentic and non-agentic search loops.
+⇒ Agentic search consistently beats non-agentic, given the same provider.
+⇒ Search is the single biggest performance lever the paper identifies:
+  3.6× live-market Brier difference between with-search and no-search
+  (0.1002 vs 0.3609).
+
+
+PART 2 — WHAT WE USE (current Prophet Arena agent_aia.py)
+================================================================================
+
+We use ONLY Tavily, configured as follows:
+   • Provider: tavily-python SDK
+   • Endpoint: tavily.search(query, max_results=5, topic="news",
+                              start_date=..., end_date=...,
+                              exclude_domains=...)
+   • Filters applied:
+       - topic="news"  (news articles only)
+       - start_date / end_date  (smoke-test mode: real_resolution-90d to
+                                 real_resolution-3d)
+       - exclude_domains: AIA paper blocklist (Wikipedia, weatherspark,
+         macrotrends, nasdaq, historique-meteo, tipranks, tradingeconomics)
+   • Per-query result limit: 5 articles
+   • Per-agent search budget: up to 4 iterations (max_iters_forecaster)
+   • Supervisor search budget: 3 iterations
+
+Cost: TAVILY_API_KEY is on the free tier (1000 calls/month). With M=10
+agents × 4 iters × 26 events = 1040 queries to validate the smoke test
+alone — we'd hit the limit. In practice many agents stop early; we're
+not actually hitting 1000 yet.
+
+Tavily IS a ProviderA-class system — natural-language oriented, designed
+for LLM consumption, returns synthesized snippets with title / URL /
+content / published_date. This is what AIA paper says is the right
+class.
+
+
+PART 3 — THE FULL SEARCH-PROVIDER MENU (VERBATIM USER ANALYSIS)
+================================================================================
+
+The user provided this verbatim analysis of the May 2026 search-provider
+landscape:
+
+> "What you could actually swap in for the hackathon, ranked by ROI.
+>
+> For the forecasting agents (the M=10 in Stage 1), the practical
+> search-provider menu in May 2026 is roughly:
+>
+> Tavily API — direct ProviderA equivalent, designed for LLM consumption,
+> returns synthesized snippets. Cheap, reliable, ~$0.005/query. Best ROI
+> replacement.
+>
+> Perplexity Sonar API — the original "ProviderA" template; great
+> quality, slightly more expensive.
+>
+> Anthropic's built-in web_search tool — already integrated with Claude,
+> no extra API. Quality is comparable to Tavily in my experience.
+> Easiest to ship today.
+>
+> Exa API — the "ProviderB" equivalent. Better for finding specific URLs
+> to fetch, weaker for synthesized answers. Useful as a secondary tool
+> the agent can fall back to.
+>
+> Brave Search API — cheaper than the above, lower quality."
+
+
+PART 4 — PLUS AskNews (the option the user is asking about)
+================================================================================
+
+AskNews is a sixth option specifically built for AI forecasting bots:
+
+   AskNews — purpose-built for AI forecasting. Returns structured news
+   events with entity extraction, sentiment, event categories. Used by
+   the Metaculus AI Benchmark Tournament (which has a partnership giving
+   competitors a free 9,000-call/month tier).
+
+   Pricing for non-Metaculus customers (general public):
+     • Free tier: very limited (~100/mo, mostly for prototyping)
+     • Analyst: ~$99/month (~10k calls)
+     • Pro:      ~$499/month (~50k calls + features)
+
+   We do NOT qualify for the Metaculus partnership tier.
+
+
+PART 5 — RANKING FOR PROPHET ARENA (our specific situation)
+================================================================================
+
+Criteria:
+   (a) Integration cost (time-to-add before deadline)
+   (b) Per-event $ cost over 2-week eval (~200 events × M=10 × ~2 queries
+       = ~4000 search calls)
+   (c) Quality of output (synthesized news, dates, ProviderA-class)
+   (d) Date filtering (for retrospective smoke tests)
+
+Provider scorecard:
+
+   ┌─────────────────────┬──────────┬───────────┬─────────┬──────────┐
+   │ Provider            │ Add cost │ Eval cost │ Quality │ Date filt│
+   ├─────────────────────┼──────────┼───────────┼─────────┼──────────┤
+   │ Tavily (current)    │    $0    │   ~$20    │   B+    │   ✓      │
+   │ Anthropic web_search│  ~1 hr   │   ~$0     │   B+    │   ✗      │
+   │ Perplexity Sonar    │  ~30 min │   ~$20-40 │   A     │   ✗      │
+   │ Exa                 │  ~30 min │   ~$40    │   B (B) │   ?      │
+   │ Brave               │  ~30 min │   ~$10    │   C     │   ✗      │
+   │ AskNews (paid)      │  ~30 min │   $99/mo  │   A     │   ✓      │
+   └─────────────────────┴──────────┴───────────┴─────────┴──────────┘
+
+Notes:
+   • Anthropic's web_search tool is bundled with Claude API calls. Quality
+     comparable to Tavily. BUT we currently call Opus via OpenRouter, not
+     direct Anthropic. To use web_search natively, we'd need to switch
+     auth (or add a parallel Anthropic API key path) — ~1 hr of work.
+   • Tavily's date filter is rare among providers and we lean on it for
+     the smoke test. Other providers either don't have it or do (Exa
+     possibly does; documentation varies).
+   • AskNews is the only purpose-built-for-forecasting service. Worth it
+     IF we had partnership pricing or unlimited budget.
+
+
+PART 6 — WHAT THE PAPERS RECOMMEND ABOUT MULTIPLE PROVIDERS
+================================================================================
+
+AIA paper §4.1: "Agentic search significantly outperforms non-agentic
+search, and conditional on the search methodology, ProviderA consistently
+outperforms ProviderB."
+
+⇒ Single ProviderA-class provider, agentic loop, is the validated recipe.
+
+The paper does NOT test multi-provider ensembling. Their internal news
+corpus is layered ON TOP of ProviderA, but not via the agent — it's a
+separate retrieval surface. We don't have an equivalent.
+
+Silicon Crowd paper §6: shows internet access is not statistically
+significant in their ensemble (with 12 LLMs). But their setup did NOT
+use proper agentic search.
+
+Halawi 2024 (referenced by both papers): a single retrieval API with
+news-summarization is the standard. No multi-provider experiments.
+
+⇒ No literature strongly motivates running multiple search providers in
+parallel. Adding a second provider is engineering complexity without
+documented Brier benefit.
+
+
+PART 7 — RECOMMENDATION FOR PROPHET ARENA
+================================================================================
+
+GIVEN:
+   • We have ~10 hours to deadline
+   • OpenRouter budget $18 remaining (Tavily is on free tier, separate)
+   • Current agent_aia uses Tavily, working, validated on 8 events
+   • Search is the single biggest performance lever per AIA paper
+
+RECOMMENDATION: STICK WITH TAVILY (our current setup). Here's why:
+
+1. TAVILY IS THE RIGHT PROVIDER-CLASS.
+   • ProviderA-equivalent per AIA paper's anonymization → the validated
+     winner.
+   • Natural-language synthesis, news-focused, dates-bearing, exclude-
+     domains support, start_date/end_date support — every feature we
+     need.
+
+2. ALREADY INTEGRATED. Switching costs ≥ 30 min of work + revalidation
+   on 26 events ($5-15) we can't afford to lose. Switching to a
+   marginally better provider gives ~0.005 Brier improvement at best
+   (AIA paper Table 3); switching to Anthropic web_search means
+   refactoring our LLM auth path.
+
+3. FREE TIER COVERS EVAL. 1000/mo Tavily free tier is roughly:
+     200 events × M=10 × ~2 queries = 4000 calls/mo expected.
+   We are over the free tier ceiling at full M=10 load. Either pay
+   ~$5-20 for an upgrade OR cut to M=5. Mitigation: cache by query.
+
+4. ANTHROPIC web_search WOULD BE A NICE-TO-HAVE BACKUP. If Tavily fails
+   or runs out, having Claude's own web_search as a secondary tool the
+   agent can call would give us redundancy. BUT this requires switching
+   our LLM auth path from OpenRouter to direct Anthropic API for the
+   relevant calls — ~1-2 hours of work, risky before deadline.
+
+5. ASKNEWS NOT WORTH IT WITHOUT PARTNERSHIP. $99/mo for ~0.02 Brier
+   improvement (estimated). Better spent on OpenRouter top-ups.
+
+6. WE COULD ADD EXA AS A FALLBACK. If Tavily returns 0 results for a
+   query, the agent could automatically retry with Exa. ~30 min of work.
+   Useful but not critical. DEFER unless we have time after deploy.
+
+
+PART 8 — IF TIME PERMITS POST-DEPLOY
+================================================================================
+
+Stretch goals on search (in priority order, only if v_aia is deployed
+and registered):
+
+   1. Tavily paid tier upgrade ($5/mo for 10k calls). Removes the
+      free-tier risk. 5-minute action.
+   2. Add Exa as fallback (when Tavily returns 0 results). 30 min code.
+   3. Add Anthropic web_search as parallel secondary tool. 1-2 hr code.
+      Useful for redundancy in case OpenRouter has an outage.
+   4. (Speculative) Pay for AskNews trial credit and A/B-test on 50
+      Kalshibench events. $0 if free trial; $99 otherwise. Not before
+      deadline.
+
+
+PART 9 — FINAL ANSWER
+================================================================================
+
+Q1: What does AIA Labs use?
+   A: Anonymized "ProviderA" (natural-language synthesis class, e.g.
+      Perplexity/Tavily) + their proprietary internal news corpus.
+
+Q2: What do we use?
+   A: Tavily (ProviderA-class equivalent), free tier, with date filter +
+      AIA blocklist. M=10 agents do agentic search loops; each agent
+      gets up to 4 search iterations.
+
+Q3: Should we switch?
+   A: NO. Tavily is the right class. Switching to Perplexity (~$20 over
+      eval) or Anthropic web_search (~$0 but 1-2 hr refactor) gives
+      ~0.005 Brier improvement at best per AIA paper's evidence — not
+      worth the risk before deadline. Adding Exa as fallback is a
+      post-deploy stretch goal.
+
+Q4: AskNews?
+   A: NO. Without the Metaculus AIB partnership, AskNews is $99/mo for
+      marginal improvement. Tavily is the more cost-effective option for
+      a hackathon team without commercial partnership.
+
+================================================================================
+END SEARCH PROVIDERS ANALYSIS
+================================================================================

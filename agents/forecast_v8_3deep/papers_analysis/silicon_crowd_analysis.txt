@@ -1,0 +1,371 @@
+================================================================================
+WISDOM OF THE SILICON CROWD — Paper Analysis + Prophet Arena Translation
+================================================================================
+Source: arXiv 2402.19379v6 — "Wisdom of the Silicon Crowd: LLM Ensemble
+Prediction Capabilities Rival Human Crowd Accuracy" (Schoenegger, Tuminauskaite,
+Park, Tetlock — NeurIPS format)
+Local extract: /workspace/context/silicon_extracted/main.tex
+================================================================================
+
+
+PART 1 — PAPER SUMMARY
+================================================================================
+
+1.1 Key findings (headline)
+---------------------------
+A 12-LLM ensemble, aggregated by MEDIAN, achieves Brier 0.20 on 31 binary
+Metaculus questions — statistically indistinguishable from the human crowd's
+Brier 0.19. Significantly better than the 50% no-info baseline (Brier 0.25).
+
+Previous best result was Schoenegger 2023 showing GPT-4 alone couldn't beat
+the 50/50 baseline. This paper shows ensembling rescues the crowd-wisdom
+property: aggregating heterogeneous LLM forecasts CANCELS individual biases
+and produces a well-calibrated crowd-level estimate.
+
+SECOND key finding: showing an LLM the MEDIAN HUMAN FORECAST improves its
+Brier by 17-28%. But the LLM-after-update is still WORSE than a naive 50/50
+linear pool of (LLM_before + human_median). So: do NOT let the LLM do its
+own Bayesian update with external signals — apply linear pool externally.
+
+1.2 Setup
+---------
+Dataset: 31 binary questions from a Metaculus 3-month tournament
+   (Oct 2023 – Jan 2024). 925 human forecasters. 14/31 (~45%) resolved YES.
+   Topics: geopolitics, finance, politics, AQI, crypto, space, etc.
+
+Models: 12 LLMs (intentionally heterogeneous):
+   GPT-4, GPT-4 with Bing, Claude 2, GPT-3.5-Turbo-Instruct, Solar-0-70B,
+   Llama-2-70B, PaLM 2 (Chat-Bison@002), Coral (Command), Mistral-7B-Instruct,
+   Bard (PaLM 2), Falcon-180B, Qwen-7B-Chat.
+
+Per question: 3 independent queries × 12 models = up to 36 predictions.
+
+Aggregation: median (within model across 3 queries) → median (across 12 models).
+No Platt scaling, no extremization, no weighting. Pure median.
+
+1.3 Per-model individual Brier scores
+-------------------------------------
+   GPT-4 (no Bing)            = 0.15  ← BEST individual
+   GPT-4 (with Bing)          = 0.16
+   Bard (PaLM 2)              = 0.19  ← ties human crowd
+   Human crowd                = 0.19
+   Falcon-180B                = 0.21
+   Claude 2                   = 0.21
+   Solar-0-70B                = 0.22
+   PaLM 2 (Chat-Bison)        = 0.23
+   Mistral-7B                 = 0.24
+   Qwen-7B                    = 0.24
+   GPT-3.5-Turbo              = 0.25
+   Llama-2-70B                = 0.25
+   Coral (Command)            = 0.38  ← outlier, drags ensemble down
+   ENSEMBLE MEDIAN            = 0.20
+
+KEY OBSERVATION: GPT-4 alone (0.15) beats the 12-model median (0.20) AND
+beats the humans (0.19). The ensemble is dragged down by weaker models.
+The "wisdom of crowds" smooths variance but the ceiling is the best model.
+
+Implication for production: if you KNOW your best model, don't dilute it
+with weaker ones unless you have a CALIBRATION need (the ensemble's
+calibration is better than individual models — see 1.7).
+
+1.4 What does diversity matter?
+-------------------------------
+Diversity dimensions in the ensemble:
+   - Company (US/UK/CN/UAE/KR/FR): OpenAI, Anthropic, Google, Cohere, Meta,
+     Mistral, Upstage, TII, Alibaba.
+   - Internet access vs not: 3 with, 9 without.
+   - Open vs closed weights: 4 open, 8 closed.
+   - Model size: 7B → ~1.6T.
+
+ANOVA across models: F(12,354) = 2.64, p = 0.002 — significant but driven
+ENTIRELY by Coral being a bad outlier. Tukey HSD: no significant pair-wise
+difference between any non-Coral models.
+
+INTERNET ACCESS did NOT help in this paper:
+   GPT-4 alone (0.15) < GPT-4 with Bing (0.16)
+   Coral (Command) with internet = 0.38 (worst)
+   Bard (PaLM 2) with internet = 0.19 (mid-pack)
+
+This is suspicious — likely because (a) LLMs queried within 48h of question
+open (limited news), (b) Bing/Bard implementations may not be optimized for
+forecasting, (c) underpowered N. Halawi 2024 (with proper retrieval) DID
+get gains from retrieval. The paper explicitly says retrieval gains are
+orthogonal to ensemble gains.
+
+1.5 Prompts used
+----------------
+Study 1: SINGLE FIXED PROMPT for all 12 models. Tetlock-style:
+   - Role: "you are a superforecaster"
+   - Reason about: comparison classes, base rates, past events, multiple
+     perspectives
+   - CoT trigger: "Take a deep breath and work on this problem step-by-step"
+   - Output: number 0-100 to 2 decimal places
+   - Inputs include Metaculus Background + Resolution criteria + Question
+
+NO PROMPT-STYLE COMPARISON in Study 1.
+
+Study 2 (longer prompt embedding Tetlock's "10 commandments"):
+   - Triage, decompose, balance inside/outside, error balancing, etc.
+   - Explicit mention of Brier scoring + calibration decomposition
+   - Probability RANGE output (e.g. "between 30.00% and 45.00%"), midpoint
+     = point estimate.
+
+The longer Study 2 prompt yielded GPT-4 Brier 0.17, Claude 2 Brier 0.22.
+Compare to Study 1: GPT-4 0.15, Claude 2 0.21. The bigger prompt did NOT
+beat the simpler one in this paper — though no statistical comparison
+offered.
+
+PRACTICAL TAKEAWAY: There is no evidence the Tetlock-10-commandments
+mega-prompt beats a simpler superforecaster prompt with CoT. Use the
+simpler one to save tokens.
+
+1.6 Human comparison & Study 2 (the linear-pool result)
+-------------------------------------------------------
+Study 2 — Intervene by showing the LLM the median human forecast, then
+ask for an updated forecast.
+
+   Model         Pre Brier   Post Brier   Improvement
+   GPT-4         0.17        0.14         17.6% (p=0.003)
+   Claude 2      0.22        0.15         28.6% (p<0.001)
+
+Also confidence intervals tightened significantly (LLMs become more decisive
+when given crowd input — both more accurate AND more confident).
+
+BUT — and this is the killer result for ensemble design:
+   The LLM-after-update is SIGNIFICANTLY WORSE than a naive
+   0.5 × LLM_before + 0.5 × human_median pool:
+
+   GPT-4: averaged Brier 0.13 vs updated Brier 0.14 (p=0.011)
+   Claude 2: averaged 0.14 vs updated 0.15 (p<0.001)
+
+A LINEAR POOL BEATS THE LLM'S OWN BAYESIAN-STYLE UPDATE.
+
+Direct implication: when you have an EXTERNAL strong signal (market price,
+crowd forecast, expert opinion), do NOT pass it into the LLM and ask it to
+update. Apply the linear pool OUTSIDE the LLM call.
+
+1.7 Calibration without correction
+----------------------------------
+Calibration Index (binned weighted MSE between predicted vs observed
+frequencies), Table 3:
+   Falcon-180B       0.027  ← best
+   Qwen-7B           0.055
+   PaLM 2            0.068
+   Bard, Llama-2     0.071
+   GPT-4             0.075
+   Mistral, Solar    0.080
+   Claude 2          0.082
+   GPT-4 (Bing)      0.088
+   GPT-3.5           0.106
+   Coral             0.212  ← worst
+   ENSEMBLE MEDIAN   0.041  ← second-best of any system measured
+
+The ensemble's CALIBRATION (0.041) is BETTER than 11 of 12 individual
+models. Aggregating biased forecasters cancels their biases.
+
+The ensemble is still slightly overconfident (predicts events as more
+likely than they actually occur — acquiescence bias).
+
+Acquiescence bias is striking: across all 1,007 raw forecasts: median 60%,
+mean 57.35% (vs base rate ~45%). LLMs systematically over-predict YES.
+
+1.8 Untested but recommended
+----------------------------
+   ❌ Mean vs median vs trimmed-mean vs geometric-mean aggregations
+   ❌ Extremization of the aggregate (Tetlock-style)
+   ❌ Platt scaling on the aggregate
+   ❌ Inverse-variance weighting (high-agreement → trust more)
+   ❌ Per-category routing or weighting
+   ❌ Pruning weak models by historical Brier
+   ❌ Ensemble size curve (1 / 2 / 5 / 12 models)
+   ❌ Retrieval-augmented ensembles (Halawi-style + Silicon-Crowd-style)
+
+All of these are obvious extensions explicitly invited by the paper.
+
+1.9 Limitations
+---------------
+   1. Coral and Bard had technical / content-policy issues (109 missing
+      forecasts). Coral censorship and Falcon technical failures.
+   2. Web-interface access only (no API) — default temperatures vary
+      across providers, no temperature control.
+   3. N=31 — small. Equivalence bounds wide (Cohen's d=0.5).
+   4. Single 3-month window from late 2023 — may not generalize.
+   5. No per-category breakdown.
+   6. GPT-4 alone beats the ensemble. The headline "12 ≈ humans" is partly
+      because the ensemble dilutes the best model.
+
+
+PART 2 — HOW IT WORKS
+================================================================================
+
+For one question:
+   1. Construct a Tetlock-style superforecaster prompt with the Metaculus
+      Background + Resolution criteria + Question text.
+   2. Query each of 12 LLMs three times with default temperature.
+   3. For each LLM, take the median of its 3 forecasts (per-LLM denoising).
+   4. Take the median of the 12 per-LLM medians (cross-LLM aggregation).
+   5. Output as the ensemble prediction. No post-processing.
+
+For Study 2's intervention:
+   1. Get LLM's initial forecast.
+   2. Reveal the median human forecast from Metaculus.
+   3. Ask the LLM to re-forecast.
+   4. (Better than #3: just compute 0.5 × initial + 0.5 × human externally.)
+
+
+PART 3 — TRANSLATION TO PROPHET ARENA FORECAST TRACK
+================================================================================
+
+3.1 Concept-level translations
+------------------------------
+CONCEPT 1: Median > Mean for aggregation (citation-supported).
+   Our v8 currently does cross-model MEAN inside the meta-reasoner (the
+   meta sees probs + reasoning and outputs a consensus). The Silicon Crowd
+   paper says simple MEDIAN of independent forecasts BEATS the LLM's own
+   aggregation effort.
+   → Add a MEDIAN as a fallback / sanity check in v8. If meta-reasoner's
+     consensus is FAR from the per-agent median, distrust it.
+
+CONCEPT 2: LLMs can match human-crowd Brier with ZERO retrieval.
+   The 12-LLM ensemble at 0.20 Brier on Metaculus, no retrieval. That's
+   an upper bound on what no-retrieval can do. We're at 0.39 on smoke
+   (with retrieval). Suggests our retrieval pipeline is currently HURTING
+   on some events (e.g., niche primaries where Tavily returns irrelevant
+   stuff). Worth ablating: try a no-retrieval v8 variant.
+
+CONCEPT 3: Linear pool > LLM-internal Bayesian update.
+   When mixing market price + LLM forecast, do NOT pass the market into the
+   LLM and ask it to incorporate. Apply the linear pool externally.
+   Our v8 ALREADY DOES THIS CORRECTLY:
+      blended = alpha * kalshi_price + (1-alpha) * llm_prob
+   Don't change this. (This was the right call in retrospect.)
+
+CONCEPT 4: GPT-4-class models alone outperform diluted ensembles.
+   Our v8 ensemble (5 slots) includes GPT-5 and Gemini alongside Opus.
+   On Silicon Crowd data, GPT-4 alone was best; ensemble was 2nd-best.
+   For Prophet Arena, the question is whether DIVERSITY of failure modes
+   buys more than DILUTION of best model.
+   → Empirically test: run v8 with ONLY Opus 4.7 × 3 prompts (CoT, ToT,
+     Calibrated) — 3 slots, same model, different prompts. Compare to v8
+     with 5 slots × different models. See which Brier wins on smoke.
+
+CONCEPT 5: Acquiescence bias is systematic.
+   LLMs mean-predict 57% YES vs actual 45%. We should:
+      → Track our v8's mean prediction on live data
+      → If consistently above the base rate, apply a corrective shift
+
+3.2 Technique-level changes to v8
+---------------------------------
+Change 1: Add median as fallback consensus.
+   When meta-reasoner's output disagrees with the per-agent median by >0.15,
+   fall back to the median. This is similar to AIA's
+   high-confidence-vs-fall-back-to-mean pattern but uses cross-agent median.
+
+   Implementation: in agent_v8.predict(), after meta_reason() returns,
+   compute median over agent_results. If
+      |meta_probs[top_outcome] - median_probs[top_outcome]| > 0.15
+   then use median_probs instead.
+
+Change 2: Test a no-retrieval ablation.
+   Set FORECAST_MAX_RESULTS_PER_QUERY=0 (or skip Tavily entirely) and re-run
+   smoke. If Brier improves or stays roughly equal, the retrieval is net
+   neutral / harmful on this distribution. Then we can save the Tavily
+   integration cost.
+
+Change 3: Same-model-different-prompts variant.
+   Build v8-alt: 5 slots all using anthropic/claude-opus-4.7 with 5
+   different prompts (CoT, ToT, Calibrated, Devil's-advocate, Reference-class).
+   Compare Brier to current v8 (5 different models, mostly same prompt).
+   The "different model" diversity is meant to cancel different biases.
+   The "different prompt" diversity targets different reasoning paths.
+
+Change 4: Acquiescence-correction shift.
+   After Platt scaling, if mean prediction across outcomes for binary
+   questions is consistently >0.50 (vs base rate <0.50), apply a small
+   uniform downward shift on probability-of-yes outcomes.
+
+3.3 Prophet API handling
+------------------------
+   • No structural changes to /predict endpoint or response shape.
+   • The Silicon Crowd's "human median" doesn't exist on Prophet Arena
+     (we have Kalshi prices, which are the equivalent). Already handled
+     via linear pool.
+   • Sample-size warning: the paper's 31 questions is too small to draw
+     strong conclusions. Our 26-event smoke is similar. Both are
+     UNDERPOWERED for picking between aggregators. Live eval has ~200
+     events over 2 weeks — better signal.
+
+3.4 Specific recipes worth copying
+----------------------------------
+   • Tetlock-style superforecaster prompt with CoT trigger. We already
+     have this in v8's Calibrated/CoT/ToT prompts. The Silicon Crowd's
+     more elaborate "10-commandments" prompt did NOT beat the simpler
+     version. Keep our current prompts (don't over-engineer).
+   • Multi-query single-model temperature sampling. The paper queries each
+     LLM 3 times and takes the median to denoise. We could do this on Opus
+     (the strongest) to reduce within-model variance.
+   • Track mean prediction across all questions as an acquiescence signal.
+
+
+PART 4 — PROS AND CONS for adopting Silicon Crowd patterns
+================================================================================
+
+PROS
+----
+1. SIMPLEST RECIPE in the literature: just take median across heterogeneous
+   models. Robust, theoretically grounded (wisdom of crowds), works without
+   retrieval.
+2. CALIBRATION IS A FREE LUNCH from ensembling — aggregate CI of 0.041
+   beats every individual model. Less need for aggressive Platt.
+3. LINEAR-POOL RESULT validates our v8 approach to Kalshi blending.
+4. WARNING about asking LLMs to do their own aggregation — supports our
+   choice NOT to rely solely on meta-reasoner.
+5. MEDIAN OPERATION can be added in 5 lines to v8 as a sanity-check
+   fallback.
+
+CONS
+----
+1. SMALL N (31 questions) — equivalence bounds are wide. Result may not
+   generalize to Prophet Arena's distribution.
+2. NO RETRIEVAL — paper's main thesis is "LLMs alone match humans" which
+   may not be true on harder/fresher questions Prophet Arena throws at us.
+   Halawi-style retrieval-augmented systems should outperform.
+3. NO ENSEMBLE SIZE CURVE — we don't know if 12 > 5 > 2.
+4. INTERNET ACCESS NOT VALIDATED. The paper's 3-model-internet vs
+   9-no-internet experiment is null but underpowered.
+5. THE ENSEMBLE LOSES TO GPT-4 ALONE on this data. Could be the wrong
+   architecture if we have a clearly-best base model.
+6. NO CATEGORY BREAKDOWN — can't tell if median fails on specific question
+   types.
+7. PROMPT-STYLE UNTESTED — Tetlock-10-commandments vs simpler prompt not
+   compared rigorously. We use Tetlock-style; might be wasted tokens.
+8. ALL FORECAST DATA IS OLD (late 2023). Models tested are mostly
+   superseded (GPT-4, Claude 2). Modern models (Opus 4.7, GPT-5) may have
+   different ensemble dynamics.
+
+
+PART 5 — RECOMMENDED CHANGES TO v8 (concrete, prioritized)
+================================================================================
+
+Priority 1 (LOW EFFORT, HIGH-VALUE SANITY CHECK):
+  ☐ Add cross-agent MEDIAN computation alongside meta-reasoner. Use it as
+    a sanity check: if meta is far from median, fall back to median.
+    ~10 lines of code.
+  ☐ Monitor mean predicted probability across live events. If acquiescence
+    bias appears, apply a corrective uniform shift.
+
+Priority 2 (MEDIUM EFFORT, ABLATION):
+  ☐ Run a no-retrieval ablation on the smoke test. If Brier doesn't get
+    worse, retrieval is suspect.
+  ☐ Run a same-model-different-prompts variant (Opus × 5 prompts). Compare
+    to current v8.
+
+Priority 3 (LOWER PRIORITY):
+  ☐ Add 3-query temperature denoising on Opus (sample 3× at temp=0.7, take
+    median). 3× cost on that slot.
+  ☐ Add geometric-mean and trimmed-mean as alternative aggregators in v8;
+    log all three, see which generalizes best on live data.
+
+================================================================================
+END Wisdom of Silicon Crowd analysis
+================================================================================

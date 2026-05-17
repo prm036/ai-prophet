@@ -1,0 +1,251 @@
+================================================================================
+AUDIT RESPONSE — line-by-line against 2nd-opinion checklist
+================================================================================
+Verified against agent_aia.py and agent_aia_pro.py.
+Date: 2026-05-17 ~10:10 AM UTC
+
+
+PART 1 — HIGH-RISK ITEMS (silent Brier-corrupting bugs)
+================================================================================
+
+ITEM 1 — Pipeline ordering: agents → mean → supervisor → decide → Platt
+  STATUS: ✓ CORRECT
+  Verified at agent_aia.py lines 923/929/948/956:
+    923: mean_probs = _ensemble_mean(forecasts, ...)
+    929: sup_probs, sup_confidence = _run_supervisor(...)
+    948-953: if sup_confidence == "high": p_raw = sup_probs else: p_raw = mean_probs
+    956: p_final = _platt_multi(p_raw, alpha=PLATT_ALPHA)
+  Platt is applied EXACTLY ONCE, on the post-decision SINGLE distribution.
+  Each agent's individual output is never Platt-scaled before aggregation.
+
+ITEM 2 — Supervisor fallback target: mean of forecasters (NOT mean including supervisor)
+  STATUS: ✓ CORRECT
+  When sup_confidence != "high": p_raw = mean_probs (the pre-supervisor
+  ensemble mean of M forecasters). Supervisor output is discarded.
+
+ITEM 3 — Decision-rule symmetry: binary high vs not-high
+  STATUS: ✓ CORRECT
+  Single if/else, no three-way blend. matches paper §5.2.
+
+ITEM 4 — Platt input clipping
+  STATUS: ✓ CORRECT
+  _platt_binary returns CLIP_LO at p<=0 and CLIP_HI at p>=1, avoiding
+  edge-case blowup. _platt_multi uses max(v, 1e-9) before exponentiation
+  AND clips to [CLIP_LO, CLIP_HI] after normalization.
+
+
+PART 2 — FAITHFULNESS ITEMS
+================================================================================
+
+ITEM 5 — Forecaster system prompt
+  STATUS: ✓ FAITHFUL (own re-implementation, not verbatim from paper)
+  FORECASTER_SYSTEM in aia_prompts.py covers all paper-described elements:
+    - Tetlock-style superforecaster framing
+    - Base rates, comparison classes
+    - Specifics/scenarios/calibration anchors
+    - Devil's advocate
+    - Explicit overconfidence warning (RLHF hedging)
+  Paper does not publish the verbatim forecaster system prompt; reasoning
+  trace examples (Appendix G.1) are consistent with what we elicit.
+
+ITEM 6 — Forecaster agentic-loop bound
+  STATUS: ✓ BOUNDED
+  MAX_SEARCH_ITERS_FORECASTER = 5 (default), 4 in production runs.
+  Plus last-iter forced submission (we ADD this to the paper — paper
+  doesn't document how they handle early termination).
+
+ITEM 7 — Supervisor search budget
+  STATUS: ✓ BOUNDED
+  MAX_SEARCH_ITERS_SUPERVISOR = 4 (default), 3 in production runs.
+  Same forced-final-iter safety.
+
+ITEM 8 — Multi-outcome aggregation strategy
+  STATUS: ◯ OPTION (b) selected (paper doesn't cover; we chose)
+  Currently: each agent emits a full K-dim distribution; ensemble takes
+  mean per-outcome; supervisor likewise; Platt is multi-class.
+  Alternatives:
+    (a) Each outcome as binary, K separate Platt'd binaries, server normalizes — cheapest
+    (c) K binary subquestions via Appendix-F rewording, fully independent — most faithful
+  We chose (b) for cost/latency. Option (c) would be most faithful to paper
+  (paper is binary-only), but K× the cost. Not changing for deploy.
+
+ITEM 9 — Failure-mode coverage
+  STATUS: ✓ CORRECT
+  Verified:
+    - Zero forecasters succeed → uniform fallback in predict()
+    - 7 of 10 succeed → mean of 7, supervisor sees 7 traces, normal flow
+    - Supervisor fails → returns (None, "low") → falls back to mean
+    - Tavily query fails → "[Search failed: ...]" string injected into tool
+      result; agent continues without that evidence
+    - Single agent crashes (LLM call fails) → _agentic_loop returns None,
+      not included in forecasts list
+    - OpenRouter rate-limited → LLM call exception → agent returns None
+  PLUS server.py has 8-min timeout + uniform fallback as last resort.
+
+ITEM 10 — Domain blocklist actually wired into tool call
+  STATUS: ✓ WIRED
+  Verified path: predict() → blocklist = FOREKNOWLEDGE_BLOCKLIST_DOMAINS
+  → passed to _run_one_forecaster(exclude_domains=blocklist)
+  → passed to _agentic_loop(exclude_domains=...)
+  → passed to _run_tavily(exclude_domains=exclude_domains)
+  → tav.search(..., exclude_domains=kwargs["exclude_domains"])
+  In retrospective mode, the 7 AIA paper Appendix-E domains are sent on
+  every Tavily call. In live mode, blocklist is None (live web allowed).
+
+
+PART 3 — TWO USES OF MARKET PRICE
+================================================================================
+
+USE 1 — Market price as FEATURE in agent prompt (paper's main pipeline)
+  STATUS: ✓ IMPLEMENTED in BOTH agent_aia.py AND agent_aia_pro.py
+  _format_user_prompt builds a "Pre-resolution Kalshi YES prices" section:
+      Pre-resolution Kalshi YES prices (snapshot T-3d):
+        OutcomeA: YES@0.660  (Kalshi candle mode=exact)
+        OutcomeB: YES@0.350  (Kalshi candle mode=exact)
+  Each forecaster agent sees these alongside the question. The LLM
+  decides how much to weight them. This is the paper's headline pipeline
+  (§4.2 — Table 4 shows including market price closes ~42% of the
+  no-search vs agentic-search gap).
+
+USE 2 — Post-hoc simplex blend (paper's analytical finding, NOT default pipeline)
+  STATUS:
+    agent_aia.py (faithful):   ✗ NOT DONE (matches paper — they don't blend in pipeline)
+    agent_aia_pro.py (hybrid): ✓ DONE with per-cat α (Sports 0.70, Pol 0.50, etc.)
+
+  PER 2ND OPINION WARNING: doing BOTH Use 1 AND Use 2 with v8-tuned α is
+  DOUBLE-COUNTING the market. v8's α=0.70 Sports was tuned WITHOUT Use 1
+  (v8 didn't include Kalshi in the agent prompt — only blended post-hoc).
+  agent_aia_pro has BOTH and uses v8's α → would over-weight market.
+
+  RECOMMENDATION: in agent_aia_pro, REDUCE α values to compensate for
+  Use-1 absorption. Suggested defensive values:
+      Sports:        0.70 → 0.55
+      Politics:      0.50 → 0.40
+      Entertainment: 0.35 → 0.25
+      Elections:     0.30 → 0.20
+  These are 60-75% of the v8 values — defensive corrective rather than
+  primary weight, per 2nd-opinion's analysis.
+
+
+PART 4 — IS KALSHI MARKET PRICE FULLY DEBIASED?
+================================================================================
+
+The question: when we fetch Kalshi market price for the smoke test, do
+we get a PRE-RESOLUTION (debiased) price, or do we accidentally get a
+POST-RESOLUTION (answer-key) price?
+
+OUR SETUP (kalshi_history.py):
+  - cutoff_dt = real_resolution_date - 3 days
+    (real_resolution_date is MANUALLY RESEARCHED per event, NOT Kalshi's
+     close_time. e.g. Hungary election real_resolution=2026-04-12, even
+     though Kalshi close_time was 2026-05-09.)
+  - We call /trade-api/v2/series/.../markets/{ticker}/candlesticks
+    asking for hourly OR daily candles up to cutoff_dt
+  - We return the price at the CANDLE COVERING cutoff_dt (or just before)
+
+DEBIASED? YES for retrospective smoke test, with caveats:
+  ✓ The candle price at cutoff_dt is what the market thought AT THAT
+    TIMESTAMP. It cannot incorporate events that happened after.
+  ✓ For Hungary: cutoff = April 9, election = April 12. Magyar's victory
+    not yet realized; market price reflects pre-election odds (likely
+    leaning Magyar based on polls, but not 0.99-confident).
+  ✓ For OH primary: cutoff = May 2, election = May 5. Pre-election.
+  ✓ For multi-day events (cricket May 8-12): we set
+    real_resolution=match-start (May 8), so cutoff=May 5 = pre-match.
+
+  POTENTIAL BIAS SOURCES we cannot fully eliminate:
+  ◐ INFORMED BUT PRE-RESOLUTION market price: even pre-resolution, if
+    the market knew (e.g., overwhelming poll lead, injury news), the
+    price reflects that. This is LEGITIMATE forecaster knowledge, not
+    answer-key leakage. NOT a bias to remove.
+  ◐ Candlestick aggregation level: hourly candles aggregate over an
+    hour; if huge news broke mid-hour, the closing price of that hour
+    reflects post-news prices. Still pre-cutoff overall.
+  ◐ Liquidity: thin-market candles can be wildly noisy. We treat them
+    as data anyway (no liquidity filter).
+
+LIVE MODE (cutoff_dt = None or in future):
+  We use CURRENT (yes_bid + yes_ask) / 2 from the live market. Cannot
+  leak because the event hasn't resolved yet. Bias-free by construction.
+
+VERDICT: ✓ Kalshi prices are FULLY DEBIASED for our smoke test, in the
+sense that they reflect only information available before our chosen
+cutoff. The candle endpoint serves historical OHLC data; we pick the
+right historical timestamp; no post-resolution information bleeds in.
+
+The ONE case where bias COULD sneak in: if real_resolution_dates.json
+has a wrong date. E.g., if we said "Hungary real_resolution = 2026-05-09"
+(matching Kalshi close), the candle at May 6 would include 4 weeks of
+post-election trading — that WOULD be leaked. We mitigated this with
+manual research per event. Re-confirm by spot-checking 2-3 entries in
+real_resolution_dates.json against the actual event date.
+
+
+PART 5 — TINY CORRECTIONS TO STATUS DOC
+================================================================================
+
+CORRECTION: "AIA paper is from Bridgewater AIA Labs."
+  Per arXiv 2511.07678 first page, authors are at "Bridgewater AIA Labs,
+  New York, NY" — Bridgewater (the hedge fund) is the parent. The 2nd
+  opinion suggested AIA and Bridgewater-Metaculus are unrelated entities;
+  to be safe, let me re-verify.
+  → main.tex line 146-147:
+      "\addr{Bridgewater AIA Labs \\ New York, NY}"
+      Correspondence: aialabs@bwater.com
+  bwater.com is Bridgewater Associates' domain. So AIA Labs IS a
+  Bridgewater entity. Original status doc was correct on this attribution.
+
+CORRECTION: median vs mean
+  Paper §5.1 Table tab:ensembling — mean=0.1140, trimmed=0.1142, median=0.1138.
+  All effectively equal. Median is "slightly more robust" per the 2nd
+  opinion. We use mean. Switching to median is a 1-line change to
+  _ensemble_mean if we want it. Not pursuing now (trade-off too small).
+
+
+PART 6 — ITEMS THE 2ND OPINION FLAGGED that we should ACT ON
+================================================================================
+
+PRIORITY 1 (only if redeploying agent_aia_pro for final):
+  ☐ In agent_aia_pro.py, REDUCE per-category α values to compensate
+    for Use-1 market price being in the prompt already:
+        Sports        0.70 → 0.55
+        Politics      0.50 → 0.40
+        Entertainment 0.35 → 0.25
+        Elections     0.30 → 0.20
+  Reason: avoid double-counting market signal.
+
+PRIORITY 2 (defensive, almost free):
+  ☐ Switch _ensemble_mean to median for slight robustness.
+  ☐ Add explicit AIA_MAX_ITERS env to predict() so we can dial it down
+    in production if latency is tight.
+
+PRIORITY 3 (only if time):
+  ☐ Invoke FOREKNOWLEDGE_JUDGE on each agent's reasoning trace
+    post-hoc on settled events for an audit report.
+  ☐ Consider option (c) for multi-outcome (K binary subquestions) on
+    small-K events (K≤5). Paper-faithful but Kx more cost.
+
+
+PART 7 — FINAL FIDELITY VERDICT
+================================================================================
+
+agent_aia.py is a FAITHFUL reproduction of AIA Forecaster, end-to-end:
+  • All 4 stages correctly implemented in correct order
+  • Platt applied LAST on the post-decision scalar (not per-agent)
+  • Decision rule: binary high/not-high (no three-way blend)
+  • Failure paths all degrade to mean → uniform
+  • Tavily blocklist actually passed through to API
+  • Use 1 (market price as feature) is active
+
+The non-paper extras (RFC 2822 parser, last-iter forced submit, multi-
+outcome handling, real_resolution date map, Kalshi history) are all
+ADDITIONS, not deviations — they're necessary for the Prophet Arena
+distribution which has multi-outcome events the paper doesn't address.
+
+The audit-flagged DOUBLE-COUNTING risk in agent_aia_pro.py is real and
+the fix is a 4-line edit (reduce ALPHA_BY_CATEGORY values). Will apply
+that before re-validating agent_aia_pro.
+
+================================================================================
+END AUDIT RESPONSE
+================================================================================

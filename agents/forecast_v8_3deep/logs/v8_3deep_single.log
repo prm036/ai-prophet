@@ -1,0 +1,78 @@
+  agent module: agent_v8_3deep_orall
+=== RUN v8_3deep on KXOHPRIMARY-15D26 ===
+  title: Who won the 2026 Democratic primary for Ohio's 15th Congressional District?
+  outcomes: ['Don Leonard', 'Adam Miller']
+  category: Elections
+2026-05-17 13:00:24,361 agent_v8_3deep_orall INFO v8 KXOHPRIMARY-15D26 real_resolution=2026-05-05 cutoff=2026-05-02
+2026-05-17 13:00:46,178 agent_v8_3deep_orall INFO v8_3deep_orsearch KXOHPRIMARY-15D26 OR-search: citations=55 kept=42 dropped=13 (cost=$0.1541)
+2026-05-17 13:00:46,189 ballotpedia WARNING ballotpedia error for Don Leonard: [Errno 30] Read-only file system: '/root'
+2026-05-17 13:00:46,189 ballotpedia WARNING ballotpedia error for Adam Miller: [Errno 30] Read-only file system: '/root'
+2026-05-17 13:00:46,189 agent_v8_3deep_orall INFO v8_3deep KXOHPRIMARY-15D26 ballotpedia: 0/2 candidates found, brief_len=0
+2026-05-17 13:00:46,818 agent_v8_3deep_orall INFO v8 KXOHPRIMARY-15D26 Kalshi: prices={'Don Leonard': 0.14, 'Adam Miller': 0.905} modes={'Don Leonard': 'exact', 'Adam Miller': 'exact'}
+2026-05-17 13:00:47,423 httpx INFO HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-17 13:00:47,543 httpx INFO HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-17 13:00:48,356 httpx INFO HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-17 13:00:48,358 httpx INFO HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-17 13:00:48,467 httpx INFO HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-17 13:00:48,611 httpx INFO HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-17 13:00:48,616 httpx INFO HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-17 13:00:48,814 httpx INFO HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-17 13:00:50,294 agent_v8_3deep_orall INFO [deep-0/claude-opus-4.7] iter=0 search 'Ohio 15th Congressional District 2026 Democratic primary'
+2026-05-17 13:00:50,360 agent_v8_3deep_orall INFO [deep-2/gemini-2.5-pro] iter=0 search 'Adam Miller Ohio 15th district'
+2026-05-17 13:00:50,734 agent_v8_3deep_orall INFO [deep-1/gpt-5] iter=0 search 'Ohio 15th Democratic primary 2026 results Adam Miller Don Leonard'
+2026-05-17 13:00:58,464 agent_v8_3deep_orall INFO OR-search debias: {'n_total': 5, 'n_kept': 0, 'n_dropped_url_date': 1, 'n_dropped_page_meta': 1, 'n_dropped_content_date': 3, 'n_dropped_undated': 0, 'n_dropped_redaction_empty': 0}
+2026-05-17 13:00:58,465 agent_v8_3deep_orall INFO [deep-0/claude-opus-4.7] iter=0 search 'Adam Miller OH-15 Congress Democrat'
+2026-05-17 13:00:59,345 agent_v8_3deep_orall INFO OR-search debias: {'n_total': 5, 'n_kept': 0, 'n_dropped_url_date': 1, 'n_dropped_page_meta': 3, 'n_dropped_content_date': 1, 'n_dropped_undated': 0, 'n_dropped_redaction_empty': 0}
+2026-05-17 13:00:59,716 httpx INFO HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-17 13:01:00,318 agent_v8_3deep_orall INFO OR-search debias: {'n_total': 5, 'n_kept': 4, 'n_dropped_url_date': 0, 'n_dropped_page_meta': 0, 'n_dropped_content_date': 0, 'n_dropped_undated': 1, 'n_dropped_redaction_empty': 0}
+2026-05-17 13:01:02,070 httpx INFO HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-17 13:01:06,296 agent_v8_3deep_orall INFO [deep-1/gpt-5] iter=1 search '2026 Ohio 15th Democratic primary results Adam Miller Don Leonard June 2026'
+2026-05-17 13:01:11,373 agent_v8_3deep_orall INFO OR-search debias: {'n_total': 5, 'n_kept': 3, 'n_dropped_url_date': 0, 'n_dropped_page_meta': 0, 'n_dropped_content_date': 0, 'n_dropped_undated': 1, 'n_dropped_redaction_empty': 1}
+2026-05-17 13:01:12,135 agent_v8_3deep_orall INFO [deep-2/gemini-2.5-pro] iter=1 search 'Don Leonard Ohio 15th congressional district'
+2026-05-17 13:01:12,529 agent_v8_3deep_orall INFO OR-search debias: {'n_total': 5, 'n_kept': 0, 'n_dropped_url_date': 1, 'n_dropped_page_meta': 2, 'n_dropped_content_date': 2, 'n_dropped_undated': 0, 'n_dropped_redaction_empty': 0}
+2026-05-17 13:01:13,026 httpx INFO HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-17 13:01:13,521 httpx INFO HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-17 13:01:14,386 agent_v8_3deep_orall INFO [deep-0/claude-opus-4.7] iter=1 search 'Don Leonard Ohio 15 Congress Democrat 2026'
+2026-05-17 13:01:19,611 agent_v8_3deep_orall INFO OR-search debias: {'n_total': 5, 'n_kept': 1, 'n_dropped_url_date': 1, 'n_dropped_page_meta': 0, 'n_dropped_content_date': 0, 'n_dropped_undated': 3, 'n_dropped_redaction_empty': 0}
+2026-05-17 13:01:19,718 agent_v8_3deep_orall INFO [deep-1/gpt-5] iter=2 search 'Columbus Dispatch 2026 Ohio 15th Democratic primary results Adam Miller'
+2026-05-17 13:01:21,364 httpx INFO HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-17 13:01:26,078 agent_v8_3deep_orall INFO OR-search debias: {'n_total': 5, 'n_kept': 2, 'n_dropped_url_date': 1, 'n_dropped_page_meta': 1, 'n_dropped_content_date': 1, 'n_dropped_undated': 0, 'n_dropped_redaction_empty': 0}
+2026-05-17 13:01:26,411 httpx INFO HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-17 13:01:27,775 agent_v8_3deep_orall INFO OR-search debias: {'n_total': 12, 'n_kept': 2, 'n_dropped_url_date': 1, 'n_dropped_page_meta': 2, 'n_dropped_content_date': 2, 'n_dropped_undated': 5, 'n_dropped_redaction_empty': 0}
+2026-05-17 13:01:27,775 agent_v8_3deep_orall INFO [deep-0/claude-opus-4.7] iter=1 search 'OH-15 Democratic primary May 2026 candidates endorsements'
+2026-05-17 13:01:37,496 agent_v8_3deep_orall INFO [deep-2/gemini-2.5-pro] iter=2 search 'Adam Miller vs Don Leonard Ohio 15th district endorsements'
+2026-05-17 13:01:42,433 agent_v8_3deep_orall INFO OR-search debias: {'n_total': 27, 'n_kept': 12, 'n_dropped_url_date': 1, 'n_dropped_page_meta': 3, 'n_dropped_content_date': 8, 'n_dropped_undated': 3, 'n_dropped_redaction_empty': 0}
+2026-05-17 13:01:44,338 httpx INFO HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-17 13:01:44,572 agent_v8_3deep_orall INFO [deep-0/claude-opus-4.7] iter=2 search '"Ohio 15" primary results May 2026 winner'
+2026-05-17 13:01:48,902 agent_v8_3deep_orall INFO OR-search debias: {'n_total': 15, 'n_kept': 11, 'n_dropped_url_date': 1, 'n_dropped_page_meta': 1, 'n_dropped_content_date': 1, 'n_dropped_undated': 1, 'n_dropped_redaction_empty': 0}
+2026-05-17 13:01:50,710 httpx INFO HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-17 13:01:54,078 agent_v8_3deep_orall INFO OR-search debias: {'n_total': 5, 'n_kept': 0, 'n_dropped_url_date': 0, 'n_dropped_page_meta': 4, 'n_dropped_content_date': 1, 'n_dropped_undated': 0, 'n_dropped_redaction_empty': 0}
+2026-05-17 13:01:55,779 httpx INFO HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-17 13:01:59,732 agent_v8_3deep_orall INFO [deep-2/gemini-2.5-pro] iter=3 submitted
+2026-05-17 13:02:09,108 agent_v8_3deep_orall INFO [deep-0/claude-opus-4.7] iter=3 submitted
+2026-05-17 13:02:13,334 agent_v8_3deep_orall INFO [deep-1/gpt-5] iter=3 submitted
+2026-05-17 13:02:13,337 agent_v8_3deep_orall INFO v8_3deep KXOHPRIMARY-15D26 got 5 lightweight + 3 deep = 8/8 agents
+2026-05-17 13:02:14,788 httpx INFO HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-17 13:02:32,900 agent_v8_3deep_orall INFO [v8_super supervisor] iter=0 submitted confidence=medium
+2026-05-17 13:02:32,901 agent_v8_3deep_orall INFO v8_super KXOHPRIMARY-15D26 supervisor confidence=medium probs={'Don Leonard': 0.11, 'Adam Miller': 0.89}
+2026-05-17 13:02:32,901 agent_v8_3deep_orall INFO v8 KXOHPRIMARY-15D26 used mean fallback probs={'Don Leonard': 0.111, 'Adam Miller': 0.889}
+2026-05-17 13:02:32,901 agent_v8_3deep_orall INFO v8 KXOHPRIMARY-15D26 GUARDRAIL score=3 shrink=0.05
+2026-05-17 13:02:32,901 agent_v8_3deep_orall INFO v8_3deep KXOHPRIMARY-15D26 FINAL={'Don Leonard': 0.025, 'Adam Miller': 0.975} (adaptive=False base_alpha=2.0 eff_alpha=2.000 sup_conf=medium max_pre=0.863)
+2026-05-17 13:02:32,903 agent_v8_3deep_orall INFO v8_super KXOHPRIMARY-15D26 trace saved → KXOHPRIMARY-15D26.json
+
+=== RESULT ===
+{
+  "probabilities": [
+    {
+      "market": "Don Leonard",
+      "probability": 0.024639233453150482
+    },
+    {
+      "market": "Adam Miller",
+      "probability": 0.9753607665468496
+    }
+  ]
+}
+
+TRUTH: Don Leonard
+BRIER: 1.9027

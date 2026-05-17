@@ -37,3 +37,7 @@ htmlcov/
 # OS/editor
 .DS_Store
 *.json
+
+# Forecast-track v8_3deep agent — keep sample data + traces
+!agents/forecast_v8_3deep/data/**/*.json
+!agents/forecast_v8_3deep/**/*.json
