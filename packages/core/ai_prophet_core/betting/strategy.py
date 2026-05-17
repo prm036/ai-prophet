@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
 
-from .config import MAX_SPREAD
+from .config import MAX_SPREAD, MIN_EDGE
 
 WITHIN_SPREAD_BUFFER = 0.02
 MIN_RELIABLE_SPREAD = 0.90
@@ -172,6 +172,10 @@ class DefaultBettingStrategy(BettingStrategy):
 
         diff = p_yes - yes_ask
 
+        if abs(diff) < MIN_EDGE:
+            self.last_skip_reason = f"Edge too small ({abs(diff):.3f} < {MIN_EDGE:.2f})"
+            return None
+
         if diff > 0:
             desired_shares = p_yes - yes_ask
             price = yes_ask
@@ -296,6 +300,14 @@ class RebalancingStrategy(BettingStrategy):
                     upper_bound=round(upper_bound, 6),
                 ),
             )
+
+        # Hard min-edge floor: ignore micro-edges that get eaten by fees.
+        # Within-spread (flatten) was handled above, so this only gates new
+        # entries and rebalances when |p_yes - yes_ask| < MIN_EDGE.
+        edge = abs(p_yes - yes_ask)
+        if edge < MIN_EDGE:
+            self.last_skip_reason = f"Edge too small ({edge:.3f} < {MIN_EDGE:.2f})"
+            return None
 
         # Target position in YES-equivalent fractional units: p - q
         target = p_yes - yes_ask

@@ -11,6 +11,10 @@ from dotenv import load_dotenv
 MAX_SPREAD = 1.03
 MAX_ORDER_COST = 50.0
 
+# Minimum |p_yes - yes_ask| edge required to generate any trade signal.
+# Trades with smaller edges get eaten by per-fill fees (~$0.01-0.02/share).
+MIN_EDGE = 0.02
+
 # Maximum number of markets to place orders on per tick.
 # Change this to limit how many bets the engine places in a single tick.
 MAX_MARKETS_PER_TICK = 50
