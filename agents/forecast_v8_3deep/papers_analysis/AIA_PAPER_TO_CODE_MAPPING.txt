@@ -1,0 +1,202 @@
+================================================================================
+AIA FORECASTER — PAPER-TO-CODE MAPPING (FIDELITY AUDIT)
+================================================================================
+Paper: arXiv 2511.07678 — Bridgewater AIA Labs
+Our code: agent_aia.py + aia_prompts.py + kalshi_history.py
+Audit date: 2026-05-17 ~05:30 AM CT
+
+Question: Did we faithfully reproduce the AIA Forecaster end-to-end, or
+are there gaps that affect the architecture vs evaluation utilities?
+================================================================================
+
+
+PART 1 — STAGE-BY-STAGE FIDELITY TABLE
+================================================================================
+
+  PAPER COMPONENT                          PAPER SECTION         OUR CODE                                    STATUS
+
+──────── STAGE 1: M PARALLEL AGENTIC FORECASTERS ────────
+  M = 10 independent agents               §3 Architecture       M_AGENTS=10 (configurable)                   ✓
+  Each: agentic adaptive search           §3, §4.1              _agentic_loop with OpenAI tool-use API       ✓
+  Each: q → E_1 → E_2 → ... → E_n →       §3 (formal notation)   tool_use loop calling search_news tool       ✓
+        (R_i, p_i)                                              up to MAX_SEARCH_ITERS_FORECASTER (=4)
+  Reasoning trace R_i emitted             §3, §5.2               submit_forecast tool returns reasoning      ✓
+  Probability p_i in [0,1]                §3                     probability arg (clip [0.02, 0.98])         ✓
+  Last-iter forced submission             implicit (paper        is_last + tool_choice=submit_forecast       ✓ EXTRA
+                                          doesn't describe                                                   (our safety
+                                          how they handle                                                    against running
+                                          early termination)                                                 out of iters)
+
+──────── STAGE 1A: SEARCH PROVIDER ────────
+  ProviderA (NL-synthesis)                §4.1                   Tavily (ProviderA-class)                    ✓ equivalent
+  ProviderB (link-list)                   §4.1 (not used)        — not used                                  ✓ not needed
+  Internal news corpus                    §4.1 (proprietary      —                                           ✗ NOT REPRODUCIBLE
+                                          Bridgewater asset)                                                 (no public substitute)
+  Agentic (vs non-agentic) search         §4.1 ablation          _agentic_loop is fully agentic              ✓
+  Date filtering (start_date/end_date)    §4.2                   _run_tavily passes start_date, end_date     ✓
+  exclude_domains (blocklist)             Appendix E             FOREKNOWLEDGE_BLOCKLIST_DOMAINS             ✓
+  Post-hoc strict filter (RFC 2822        not in paper          _parse_pub_date + drop unknown-date         ✓ EXTRA
+    parser + drop unknown-date)           (was their pain                                                    (v8 fix the
+                                          point too)                                                         paper doesn't
+                                                                                                             document)
+
+──────── STAGE 2: ENSEMBLE AGGREGATION ────────
+  Simple mean across M forecasts          §5.1                   _ensemble_mean                              ✓
+  Median (paper says equivalent)          §5.1 Table             — (we use mean only)                        ◯ paper says
+                                                                                                             equivalent (~0.114
+                                                                                                             vs 0.114 Brier)
+  Trimmed mean (paper says equivalent)    §5.1 Table             —                                           ◯ same
+
+──────── STAGE 3: AGENTIC SUPERVISOR ────────
+  Read M reasoning traces R_1..R_M        §5.2 Step 1            _format_meta_input formats all M traces     ✓
+  Identify points of disagreement         §5.2 Step 1            SUPERVISOR_SYSTEM prompt (with FACTUAL /     ✓ EXTRA
+    (factual vs interpretive)                                    INTERPRETIVE / MAGNITUDE / MISSING_FACTOR    (we lifted
+                                                                 classification — neoyipeng pattern)         classification
+                                                                                                             from community
+                                                                                                             repro)
+  Generate N targeted search queries      §5.2 Step 2            tools=[SEARCH_NEWS_TOOL, ...] in agentic     ✓
+    to resolve disagreements                                     loop; up to MAX_SEARCH_ITERS_SUPERVISOR(=3)
+  Output (probability, confidence ∈       §5.2 Step 3            SUBMIT_SUPERVISED_FORECAST_TOOL schema       ✓
+    {high, medium, low})                                         with confidence enum
+  Decision rule: high → use supervisor;   §5.2                   if sup_confidence == "high": p_raw = sup    ✓
+    else → fall back to simple mean                              else: p_raw = mean_probs
+
+──────── STAGE 4: STATISTICAL CORRECTION (PLATT SCALING) ────────
+  Platt α = √3 (Random Expert, fixed)     §5.3 Tab tab:stat       PLATT_ALPHA = math.sqrt(3) default          ✓
+  Formula: p^α / (p^α + (1-p)^α)           §5.3 / Appendix G.2     _platt_binary, _platt_multi                ✓
+  Don't tune α on benchmark               §5.3 (overfit risk)    Default uses fixed √3                      ✓
+                                                                  (env override allowed for experiments)
+  Multi-class extension                   §6 Limitations          _platt_multi: p_i^α / Σ_j p_j^α            ✓ EXTRA
+    (paper explicitly defers this)                                                                            (paper doesn't
+                                                                                                              do this)
+
+──────── STAGE 4A: MARKET PRICE FEATURE ────────
+  Provide market price to LLM as          §4.2 Tab tab:market-     _format_user_prompt includes Kalshi        ✓
+    feature                               retrieval-interaction   yes_prices in market_section
+  Optional ensemble with market (simplex  §6.3 (analysis only,    — (we do NOT do post-hoc simplex blend     ◯ not part of
+    regression)                           not part of pipeline)    in this agent_aia; agent_aia_pro DOES     pipeline per paper
+                                                                  via linear pool with per-cat α)
+
+──────── ANCILLARY: FOREKNOWLEDGE BIAS MITIGATION ────────
+  LLM-as-judge prompt                     Appendix D              FOREKNOWLEDGE_JUDGE_SYSTEM (in              ◐ PROMPT EXISTS
+                                                                  aia_prompts.py)                            but NOT INVOKED
+                                                                                                             in pipeline. For
+                                                                                                             retrospective
+                                                                                                             smoke audit, not
+                                                                                                             live eval.
+  Robustness check: filtered + worst-case Appendix A robustness   — (not implemented)                        ✗ academic
+                                                                                                             analysis only
+
+──────── ANCILLARY: QUESTION HANDLING ────────
+  Question rewording prompt               Appendix F verbatim     QUESTION_REWORD_PROMPT (verbatim)           ✓
+                                          quote                   _reword_question() in agent_aia.py
+  Date-cutoff sampling pseudocode         Appendix F              — (we use single per-event cutoff =        ◯ different
+    (multiple dates per market)                                   real_resolution - 3d from manual           approach;
+                                                                  research)                                  fine for our case
+
+──────── ANCILLARY: EVALUATION/ANALYSIS ────────
+  ForecastBench benchmark eval            §4 main results         —                                           ✗ not run
+                                                                                                             (their bench)
+  MarketLiquid (proprietary corpus)       §6                      —                                           ✗ proprietary
+  Pairwise p-values for uncertainty        Appendix A              —                                           ✗ academic
+  Simplex regression with market           §6.3                    —                                           ✗ analysis
+                                                                                                              utility
+  Live-market experiments                  §7                      Prophet Arena live deployment IS this      ✓ different
+                                                                                                              data, same idea
+  Bootstrap CIs (10000 samples)            Appendix A              —                                           ✗ academic
+
+
+PART 2 — WHAT'S GENUINELY MISSING (vs faithful pipeline)
+================================================================================
+
+CORE PIPELINE — NOTHING MISSING. The 4 stages (M parallel agentic agents,
+mean ensemble, agentic supervisor with confidence label, Platt α=√3)
+are all implemented and validated end-to-end. The decision rule
+(high-confidence → supervisor; else → mean) is implemented correctly.
+
+DATA SOURCES — ONE IRREPRODUCIBLE GAP:
+  • Internal news corpus (§4.1): Bridgewater's proprietary curated news.
+    No public substitute. We use only Tavily. The paper found this corpus
+    was used IN ADDITION to ProviderA, so they had TWO sources. We have ONE.
+    Mitigation: not possible — proprietary asset.
+
+VALIDATION UTILITY GAPS:
+  • Foreknowledge-bias judge NOT INVOKED in pipeline (prompt exists in
+    aia_prompts.py). For live eval this doesn't matter. For retrospective
+    smoke audit on settled events, we'd want to invoke it post-hoc on each
+    agent's reasoning trace.
+  • Pairwise p-values, simplex regression, bootstrap CIs — all academic
+    analysis utilities, not part of the agent pipeline. We don't need them
+    for deploy.
+
+PIPELINE EXTRAS WE ADD (beyond faithful paper):
+  • Multi-outcome handling (paper is binary-only)
+  • Kalshi historical candlestick fetcher
+  • Per-event real_resolution_dates manual map (smoke test)
+  • RFC 2822 parser for Tavily dates (paper doesn't document this issue)
+  • Last-iter forced submission (safety against running out of agent iters)
+  • SAVE_TRACES toggle (per-event JSON dump of full agent reasoning)
+  • Multi-vendor ensemble mix (Opus + GPT-5 + Gemini) for diversity per
+    Silicon Crowd paper. Paper uses single-model (o3) ensemble.
+
+
+PART 3 — FIDELITY SUMMARY
+================================================================================
+
+ARCHITECTURE FIDELITY: ~95-100%
+  All 4 stages present with correct semantics:
+  ✓ M parallel agentic forecasters
+  ✓ Adaptive multi-turn search per agent
+  ✓ Simple mean ensemble
+  ✓ Agentic supervisor with clarifying queries + confidence label
+  ✓ Platt scaling α=√3
+
+DATA FIDELITY: ~50%
+  ✓ Tavily (ProviderA equivalent)
+  ✗ Internal news corpus (proprietary, irreplaceable)
+  ✓ Question rewording (verbatim)
+  ✓ Domain blocklist (paper Appendix E)
+  ◐ Foreknowledge judge prompt present but not invoked
+
+EVALUATION UTILITIES: ~20%
+  ✗ ForecastBench (proprietary benchmark set)
+  ✗ MarketLiquid (proprietary)
+  ✗ Bootstrap CIs, p-values (academic analysis)
+  ✓ Brier score computation
+  ✓ Live deployment infrastructure (different from paper's eval but same
+    spirit)
+
+
+PART 4 — SHOULD WE PATCH ANYTHING BEFORE DEPLOY?
+================================================================================
+
+LOW-RISK PATCHES (cheap):
+  1. INVOKE the foreknowledge judge in retrospective mode for the smoke
+     audit (~30 min). Validates that none of our 26 sample events have
+     foreknowledge leakage in agent reasoning.
+  2. Add MEDIAN as alternative aggregator alongside mean (~10 min).
+     Paper says equivalent; harmless option.
+
+MEDIUM-RISK PATCHES (would deviate from paper):
+  3. Add per-category α blend with Kalshi (agent_aia_pro already does this).
+     Paper uses single α (or none); we'd be diverging.
+  4. Add tiered confidence guardrail. Paper has no equivalent.
+     agent_aia_pro already does this.
+
+THINGS WE SHOULD NOT TRY TO REPLICATE:
+  • Internal news corpus — proprietary
+  • ForecastBench numbers — we score on our 26-event smoke instead
+
+CONCLUSION:
+  agent_aia.py is a FAITHFUL architectural reproduction. The "missing"
+  items are either (a) proprietary (internal news corpus), or (b)
+  academic analysis utilities not needed for production deploy. The
+  pipeline does what the paper says it does, in the order it says.
+
+  agent_aia_pro.py adds 3 v8-style calibration knobs on top (per-category
+  α, tiered guardrail, Platt α=2.0). It's a hybrid, not a paper-faithful
+  reproduction.
+
+================================================================================
+END MAPPING
+================================================================================
