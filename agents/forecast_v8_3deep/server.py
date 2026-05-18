@@ -119,15 +119,37 @@ async def _predict_with_timeout(ev: dict, request_id: str) -> dict:
 
 
 @app.post("/predict")
-async def predict(event: Event, request: Request):
+async def predict(request: Request):
     request_id = request.headers.get("X-Request-Id") or str(uuid.uuid4())[:8]
     
     logger.info("[%s] Received Request - URL: %s, Method: %s, Client: %s", 
                 request_id, request.url, request.method, request.client)
     logger.info("[%s] Request Headers: %s", request_id, dict(request.headers))
-    logger.info("[%s] Request Payload: %s", request_id, event.model_dump())
     
-    ev = event.model_dump()
+    try:
+        ev = await request.json()
+    except Exception as exc:
+        logger.error("[%s] Failed to parse request body as JSON: %s", request_id, exc)
+        return JSONResponse(status_code=400, content={"detail": "Invalid JSON payload"})
+        
+    logger.info("[%s] Request Payload: %s", request_id, ev)
+    
+    # Robust normalization of incoming keys
+    outcomes = ev.get("outcomes")
+    if not outcomes:
+        outcomes = ev.get("options") or ev.get("choices")
+        
+    if isinstance(outcomes, list):
+        outcomes = [str(o) for o in outcomes]
+    else:
+        outcomes = ["Yes", "No"]
+        
+    ev["outcomes"] = outcomes
+    
+    # Ensure expected keys are present as None if missing
+    for field in ["event_ticker", "market_ticker", "title", "subtitle", "description", "category", "rules", "close_time"]:
+        ev.setdefault(field, None)
+        
     key = _cache_key(ev)
 
     cached = _cached(key)
