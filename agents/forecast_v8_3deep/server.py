@@ -25,6 +25,8 @@ from typing import Any
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 load_dotenv()
@@ -41,6 +43,23 @@ TIMEOUT_SEC = float(os.environ.get("FORECAST_TIMEOUT_SEC", "480"))  # 8 min
 CACHE_TTL_SEC = float(os.environ.get("FORECAST_CACHE_TTL_SEC", "1800"))  # 30 min
 
 app = FastAPI(title="Prophet Arena Forecast Agent")
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    try:
+        body = await request.body()
+        body_text = body.decode("utf-8")
+    except Exception:
+        body_text = "<could not read body>"
+    
+    logger.error("Validation error for request %s: %s", request.url, exc)
+    logger.error("Raw request headers: %s", dict(request.headers))
+    logger.error("Raw request body: %s", body_text)
+    
+    return JSONResponse(
+        status_code=422,
+        content={"detail": exc.errors(), "body": body_text},
+    )
 
 _cache: dict[str, tuple[float, dict]] = {}
 

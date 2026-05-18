@@ -2,6 +2,8 @@ FROM python:3.13-slim
 
 WORKDIR /app
 
+ENV PYTHONUNBUFFERED=1
+
 # Install dependencies first (cached layer)
 COPY agents/forecast_v8_3deep/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
