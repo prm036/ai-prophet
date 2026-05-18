@@ -102,6 +102,12 @@ async def _predict_with_timeout(ev: dict, request_id: str) -> dict:
 @app.post("/predict")
 async def predict(event: Event, request: Request):
     request_id = request.headers.get("X-Request-Id") or str(uuid.uuid4())[:8]
+    
+    logger.info("[%s] Received Request - URL: %s, Method: %s, Client: %s", 
+                request_id, request.url, request.method, request.client)
+    logger.info("[%s] Request Headers: %s", request_id, dict(request.headers))
+    logger.info("[%s] Request Payload: %s", request_id, event.model_dump())
+    
     ev = event.model_dump()
     key = _cache_key(ev)
 
